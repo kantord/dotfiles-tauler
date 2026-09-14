@@ -38,35 +38,42 @@ function uvColor(raw) {
   return "#f38ba8";
 }
 
-// `location` is anything wttr.in resolves — a city, an airport code, a
-// "~Landmark Name". Omit it and wttr.in geolocates from the requesting IP,
-// which is the sane default for a machine that travels. It is URL-encoded
-// before interpolation, so a space (or a stray quote) can't break out of the
-// single-quoted curl argument below.
+// `location` goes straight to wttr.in, so anything it understands works: a
+// city, an airport code, a "~Landmark Name". Leave it empty and it geolocates
+// by IP, which is usually right on a laptop. Both props are sanitized before
+// they reach the command, so a space or a stray quote in `location` can't
+// escape the single quotes around the curl argument.
 //
-// Both props are part of the command string, and the command string is the
-// stream's identity — changing either respawns the subprocess. Fine for
-// config set once in layout.jsx; don't drive them from changing state.
+// They both end up inside the command string, and tauler uses that string to
+// identify the stream. Change either one and the subprocess gets killed and
+// respawned, so set them in layout.jsx and leave them there.
 export default function WeatherCard({ location = '', refreshSeconds = 180 }) {
-  const w = useJSONStream("/usr/bin/bash", `while true; do data=$(curl -s --max-time 10 'wttr.in/${encodeURIComponent(location)}?format=%C|%t|%f|%h|%u' 2>/dev/null); cond=$(echo "$data"|cut -d'|' -f1); temp=$(echo "$data"|cut -d'|' -f2); feels=$(echo "$data"|cut -d'|' -f3); humidity=$(echo "$data"|cut -d'|' -f4); uv=$(echo "$data"|cut -d'|' -f5); printf '{"cond":"%s","temp":"%s","feels":"%s","humidity":"%s","uv":"%s"}\\n' "$cond" "$temp" "$feels" "$humidity" "$uv"; sleep ${refreshSeconds}; done`);
+  const period = Number(refreshSeconds) || 180;
+  const w = useJSONStream("/usr/bin/bash", `while true; do data=$(curl -s --max-time 10 'wttr.in/${encodeURIComponent(location)}?format=%C|%t|%f|%h|%u' 2>/dev/null); cond=$(echo "$data"|cut -d'|' -f1); temp=$(echo "$data"|cut -d'|' -f2); feels=$(echo "$data"|cut -d'|' -f3); humidity=$(echo "$data"|cut -d'|' -f4); uv=$(echo "$data"|cut -d'|' -f5); printf '{"cond":"%s","temp":"%s","feels":"%s","humidity":"%s","uv":"%s"}\\n' "$cond" "$temp" "$feels" "$humidity" "$uv"; sleep ${period}; done`);
+  // A failed curl still prints a complete record, only with every field empty,
+  // so `??` would let the blanks through. `||` catches those as well as the
+  // null we get before the first line lands.
+  const temp = w?.temp || "…";
+  const feels = w?.feels || "…";
+  const humidity = w?.humidity || "—";
   // THEME-GAP: UV colors in inline style (semantic — low/moderate/high/extreme scale, no token equivalent)
   return (
-    <container tw="flex flex-col w-full">
-      <container tw="py-[4px] w-full"><container tw="h-px w-full" style={{backgroundColor: "rgba(255,255,255,0.08)"}} /></container>
-    <container tw="flex flex-col gap-[4px] px-3 py-[8px]">
-      <container tw="flex flex-row items-baseline justify-between">
-        <text tw="text-[15px] text-foreground font-bold">{w?.temp ?? "…"}</text>
-        <text tw="text-[10px] text-muted-foreground">feels {w?.feels ?? "…"}</text>
-      </container>
-      <container tw="flex flex-row justify-between items-center">
-        <Icon name={conditionIcon(w?.cond)} tw="text-[14px] text-muted-foreground" />
-        <text tw="text-[10px] text-muted-foreground">RH {w?.humidity ?? "—"}</text>
-      </container>
-      <container tw="flex flex-row justify-between">
-        <text tw="text-[10px]" style={{ color: uvColor(w?.uv) }}>UV {uvLabel(w?.uv)}</text>
-        <container />
-      </container>
-    </container>
-    </container>
+    <div class="flex flex-col w-full">
+      <div class="py-[4px] w-full"><div class="h-px w-full" style={{backgroundColor: "rgba(255,255,255,0.08)"}} /></div>
+    <div class="flex flex-col gap-[4px] px-3 py-[8px]">
+      <div class="flex flex-row items-baseline justify-between">
+        <span class="text-[15px] text-foreground font-bold">{temp}</span>
+        <span class="text-[10px] text-muted-foreground">feels {feels}</span>
+      </div>
+      <div class="flex flex-row justify-between items-center">
+        <Icon name={conditionIcon(w?.cond)} class="text-[14px] text-muted-foreground" />
+        <span class="text-[10px] text-muted-foreground">RH {humidity}</span>
+      </div>
+      <div class="flex flex-row justify-between">
+        <span class="text-[10px]" style={{ color: uvColor(w?.uv) }}>UV {uvLabel(w?.uv)}</span>
+        <div />
+      </div>
+    </div>
+    </div>
   );
 }
