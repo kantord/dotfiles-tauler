@@ -1,0 +1,934 @@
+# A schema for the whole of i3's config language (i3 4.25.1): every directive
+# the config parser knows, plus `mode { }` and `bar { colors { } }` blocks,
+# comments and variables. Grammar checked directive by directive against
+# i3's own parser specification, parser-specs/config.spec (the file its C
+# config parser is generated from), and the userguide — not guessed.
+#
+# What "the whole config language" means here, and where it stops:
+#
+# - Every state in config.spec has a node: bindings with all four flags,
+#   binding modes (with --pango_markup), the complete bar block including
+#   `colors { }`, `padding`, `workspace_command` and the deprecated
+#   `wheel_*_cmd`, criteria for for_window/assign/no_focus, gaps (global and
+#   per-workspace), client colors, tiling_drag (both forms), and the
+#   testcase-only directives (`fake_outputs`, `restart_state`) too.
+# - The *command* language — what comes after a bindsym's keys, after
+#   for_window's criteria, after exec — is a separate grammar (i3's
+#   parser-specs/commands.spec, the same one `i3-msg` speaks) and is passed
+#   through as an opaque single-line string. Modelling it would be a second
+#   schema, not a bigger version of this one.
+# - Spelling variants are normalised, not enumerated: i3 accepts twelve
+#   spellings of true/false (`1 yes true on enable active` / `0 no false off
+#   disable inactive`); this schema takes `yes`/`no` for the boolean
+#   directives, and `on`/`off` only where the userguide itself uses them
+#   (`smart_gaps`, `smart_borders`, `tiling_drag off`). Aliases that are
+#   pure spelling are not separate nodes, the node emits the current
+#   keyword: `new_window`/`new_float` for the two `default_*border`s,
+#   `bind` for `bindcode` (not bindsym — i3 parses anything but the literal
+#   `bindsym` as a keycode), the dashed `force-xinerama`/`disable-randr15`/
+#   `ipc-socket`/`fake-outputs`, `workspace_layout stacked`. Old forms that
+#   need a *mapping* when porting: `hide_edge_borders yes` is `vertical`
+#   and `no` is `none`; a 3- or 4-color `client.*` line leaves `indicator`
+#   at the class default from the userguide table and `child_border` equal
+#   to `background`; the bar's old two-color `<class> <text> <background>`
+#   form is the three-color form with `text` and `background` swapped and
+#   `border` equal to `background`. Deprecated directives with their own
+#   behaviour (`force_focus_wrapping`, the bar's `wheel_up_cmd`/
+#   `wheel_down_cmd`) are kept, marked deprecated in a comment.
+#
+# Shape: one root container, `I3Config`, whose children are the file's
+# lines in order — order matters in i3 (an `assign` is first-match-wins,
+# `include` splices at its position, `exec`s run in order; `set` is the one
+# exception, i3 collects variables in a pre-pass over the whole file). Two nested
+# containers, `Mode` and `Bar` (with `BarColors` inside it), mirror the two
+# brace blocks the grammar has. Every leaf carries either a `directive`
+# constant (the plain `keyword value` lines — rendered by one generic branch)
+# or a `kind` constant (the multi-argument shapes — rendered by a dedicated
+# branch or macro). The template switches on those, so a leaf knows its own
+# keyword and the template never has to.
+#
+# `$variables`: i3 substitutes `set` variables textually before parsing, in
+# every position. The patterns here allow a `$name` wherever a real config
+# tends to use one — key combos (`$mod+Return`), modifiers, colors,
+# workspace names, commands — but not inside the enum-valued directives; in
+# a JSX layout a JS constant is the natural way to share a value anyway, and
+# `Set` exists mostly for `$mod` readability and for values an `include`d
+# hand-written file also needs.
+#
+# Optional props are boolean flags only (`release`, `noStartupId`,
+# `pangoMarkup`...), declared with an empty rule (`{}`): the generator
+# validates every declared prop as mandatory when it has a pattern/enum, and
+# skips validation entirely when it has none — an empty rule is the one way
+# to say "may be omitted" today. A flag is `<Bindsym release ... />` in JSX
+# (a bare attribute is `true`); the template accepts absent, `null` or a
+# boolean and turns anything else (`release="no"`) into a
+# `tauler_schema_error` line, so no unvalidated text reaches the output.
+# That is also why `ClientColor` takes all five colors: i3 lets the last
+# two be omitted, but an optional *text* prop would be an unvalidated one.
+#
+# Every other scalar prop value is a string — the generator checks `typeof`
+# before the pattern, so `size={5}` fails where `size="5"` passes. The one
+# array prop, `WorkspaceOutput.outputs`, is an array of such strings.
+#
+# The value patterns are the escaping mechanism for the output (there is no
+# other): every string prop forbids `\r` and `\n` (both end a line for i3's
+# parser) and a trailing backslash (i3's line continuation would swallow the
+# next line — except in a comment, where i3 ignores it), and anything the
+# template puts in double quotes forbids `"` and `\`. Free text that i3
+# reads to the end of the line (commands, font, paths, `set` values) may
+# not *start* with a `"` unless the whole value is one quoted string: i3
+# would end the string at the closing quote and parse the rest as the next
+# directive. Bare words (workspace/output/id names, criteria values) also
+# forbid `,` and `;`, which end a word for i3, or are quoted when needed.
+#
+# The generator cannot restrict which components may be children of which
+# container. Every `directive` node therefore carries a `block` constant
+# (`top`, `bar`, or `any` for `font`), and `kind` nodes are dispatched by
+# the block that knows them; a node in the wrong block (a `Bindsym` inside
+# `Bar`, a `BarMode` at top level) renders a `tauler_schema_error` line,
+# which is not an i3 directive, so `i3 -C` and i3 itself fail loudly at that
+# line instead of silently skipping — or worse, reinterpreting — the node.
+#
+# `_rules` holds the value grammars several nodes share, as YAML anchors;
+# the crate only reads `nodes`, so the block is invisible to it, and the
+# aliases are resolved by the YAML parser before the meta-schema check.
+_rules:
+  color: &color
+    pattern: '^(#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?|\$[A-Za-z_][A-Za-z0-9_]*)$'
+    error: 'must be an HTML hex color (#rrggbb or #rrggbbaa) or a $variable'
+  yes_no: &yes_no
+    enum: ["yes", "no"]
+  # A `+`-joined modifier combination as the floating_modifier and
+  # swap_modifier directives and the bar's `modifier` take it — plain
+  # modifiers only, no key at the end.
+  modifiers: &modifiers
+    pattern: '^(Mod[1-5]|Shift|Control|Ctrl|\$[A-Za-z_][A-Za-z0-9_]*)(\+(Mod[1-5]|Shift|Control|Ctrl|\$[A-Za-z_][A-Za-z0-9_]*))*$'
+    error: 'must be one or more of Mod1-Mod5/Shift/Control/Ctrl (or a $variable), joined with "+"'
+  # One line of i3's command language (`focus left`, `exec --no-startup-id
+  # foo`, `mode "resize"`, chains with `;` and `,`), passed through verbatim
+  # — either unquoted, or one double-quoted string as a whole (the way the
+  # stock config quotes its `i3-nagbar` exec). Same shape as `single_line`;
+  # a separate anchor only for the error text.
+  command: &command
+    pattern: '^("([^"\\\r\n]|\\[^"\r\n])*"|[^"\r\n\\]([^\r\n]*[^\\\r\n])?)$'
+    error: 'must be a single-line i3 command, unquoted or one whole double-quoted string (no newline, no trailing backslash)'
+  variable_name: &variable_name
+    pattern: '^\$[A-Za-z_][A-Za-z0-9_]*$'
+    error: 'must be a $name'
+  integer: &integer
+    pattern: '^-?[0-9]+$'
+    error: 'must be an integer'
+  # `normal|pixel [<n>[px]] | 1pixel | none` — the two default_*border directives.
+  border_style: &border_style
+    pattern: '^(none|1pixel|(normal|pixel)( [0-9]+( ?px)?)?)$'
+    error: 'must be none, 1pixel, or normal/pixel optionally followed by a width in px'
+  # Criteria as they appear between the brackets of `[class="^foo$" title="bar"]`
+  # — the brackets are added by the template. Every criterion from
+  # config.spec's CRITERIA state; values may be quoted or bare words. i3's
+  # `\"` escape inside a quoted value is not expressible (a `"` or `\`
+  # inside the quotes is what breaks the output), a regex rarely needs it.
+  criteria: &criteria
+    pattern: '^((class|instance|window_role|con_id|id|window_type|con_mark|title|urgent|workspace|machine)=("[^"\\\r\n]*"|[^\s\]",;\\]+)|(floating_from|tiling_from)=("(auto|user)"|auto|user)|(tiling|floating|all))( ((class|instance|window_role|con_id|id|window_type|con_mark|title|urgent|workspace|machine)=("[^"\\\r\n]*"|[^\s\]",;\\]+)|(floating_from|tiling_from)=("(auto|user)"|auto|user)|(tiling|floating|all)))*$'
+    error: 'must be space-separated criteria without the surrounding brackets, e.g. class="^Firefox$" title="x", floating_from=auto, or the bare words tiling/floating/all (quoted values may not contain " or \)'
+  # The same for `assign`, which i3 silently drops when the criteria name a
+  # window mode (`tiling`, `floating`, `floating_from=`, `tiling_from=`) —
+  # so those alternatives are missing here; `all` and the property matches stay.
+  assign_criteria: &assign_criteria
+    pattern: '^((class|instance|window_role|con_id|id|window_type|con_mark|title|urgent|workspace|machine)=("[^"\\\r\n]*"|[^\s\]",;\\]+)|all)( ((class|instance|window_role|con_id|id|window_type|con_mark|title|urgent|workspace|machine)=("[^"\\\r\n]*"|[^\s\]",;\\]+)|all))*$'
+    error: 'must be space-separated criteria without the surrounding brackets, e.g. class="^Firefox$" title="x" or all — assign does not support tiling/floating/floating_from/tiling_from'
+  # A workspace or output name where i3 takes a word or a quoted string: a
+  # number, a name, or a $variable. The template (`ws` macro) quotes it when
+  # it contains a space, comma, semicolon or `]` — the characters that would
+  # otherwise end the word for i3 — or starts with a keyword i3 would eat.
+  # A `$variable` is never quoted by the template, so where i3 takes a
+  # *word* (`workspace … output`, `workspace … gaps`, the bar's `output`/
+  # `tray_output`) its `set` value must be a single word or carry its own
+  # quotes (`set $ws "2: work"`, as the stock config does); the `assign`
+  # targets take a string and accept either.
+  workspace: &workspace
+    pattern: '^[^\t\r\n"\\]+$'
+    error: 'must be a workspace/output number or name (no quotes, backslashes or tabs — quotes are added when needed)'
+  # `<n>` or `<n>px` — gap sizes, tray padding, workspace_min_width. i3's
+  # number token is signed and gaps are not clamped, so negatives pass.
+  pixels: &pixels
+    pattern: '^-?[0-9]+(px)?$'
+    error: 'must be a pixel count, optionally suffixed "px"'
+  # The free-text directives (font, set, paths, shell commands): one
+  # non-empty line not ending in a backslash, either unquoted or one whole
+  # double-quoted string (`set $ws1 "1"`).
+  single_line: &single_line
+    pattern: '^("([^"\\\r\n]|\\[^"\r\n])*"|[^"\r\n\\]([^\r\n]*[^\\\r\n])?)$'
+    error: 'must be a single non-empty line, unquoted or one whole double-quoted string, not ending in a backslash'
+  # A word as i3 tokenises one — no whitespace, `,`, `;` or `]`, and no
+  # `"`/`\` — or a double-quoted string (`"Dell UP2414Q"`), quotes included.
+  word: &word
+    pattern: '^("[^"\\\r\n]*"|[^\s",;\]\\]+)$'
+    error: 'must be a single word (no spaces, commas, semicolons or "]") or a double-quoted string'
+  gap_scope: &gap_scope
+    enum: ["inner", "outer", "horizontal", "vertical", "top", "right", "bottom", "left"]
+  # `bindsym`/`bindcode` and their four flags share one rule set. `keys` is
+  # the combo after the flags: zero or more modifiers (Mod1-5, Shift,
+  # Control/Ctrl, Mode_switch, Group1-4, or a $variable) joined with "+",
+  # then the key itself — a keysym (`Return`, `XF86AudioMute`), a mouse
+  # button (`button8`), or, for Bindcode, a keycode number. The key may not
+  # be a bare modifier name (not a keysym; i3 logs and never fires) or start
+  # with `-` (i3 would read it as a flag and the next word as the key).
+  bindsym_keys: &bindsym_keys
+    pattern: '^((Mod[1-5]|Shift|Control|Ctrl|Mode_switch|Group[1-4]|\$[A-Za-z_][A-Za-z0-9_]*)\+)*(?!(Mod[1-5]|Shift|Control|Ctrl|Mode_switch|Group[1-4])$)[^\s+",;\]\\-][^\s+",;\]\\]*$'
+    error: 'must be modifiers joined with "+" ending in a key, like "$mod+Shift+q", "XF86AudioMute" or "button8" — punctuation keys by keysym name (semicolon, comma, bracketright, plus)'
+  bindcode_keys: &bindcode_keys
+    pattern: '^((Mod[1-5]|Shift|Control|Ctrl|Mode_switch|Group[1-4]|\$[A-Za-z_][A-Za-z0-9_]*)\+)*[0-9]+$'
+    error: 'must be a key combination ending in a keycode number, like "$mod+40" or "199"'
+
+nodes:
+  - component: I3Config
+    root: true
+    container: true
+    children_as: entries
+
+  # =========================================================================
+  # Lines that are not directives
+  # =========================================================================
+
+  # `# text` — i3 only allows comments at the start of a line, never trailing.
+  - component: Comment
+    props:
+      text: { pattern: '^[^\r\n]*$', error: 'must be a single line' }
+    constants: { kind: comment }
+
+  # An empty line, purely for the readability of the generated file (i3's
+  # `-C` and its error messages report line numbers, so grouping helps).
+  - component: Blank
+    constants: { kind: blank }
+
+  # `set $name value` — textual substitution, applied to the whole file
+  # (including `include`d ones, one way: a parent can define for a child,
+  # not the reverse) before any parsing. Not recursive.
+  - component: Set
+    props:
+      name: *variable_name
+      value: *single_line
+    constants: { kind: set }
+
+  # `set_from_resource $name resource fallback` — the variable takes the X
+  # resource's value (`xrdb`), or the fallback when it is not loaded. The
+  # userguide requires the fallback.
+  - component: SetFromResource
+    props:
+      name: *variable_name
+      resource: { pattern: '^\S+$', error: 'must be an X resource name like i3wm.color0' }
+      fallback: *single_line
+    constants: { kind: set_from_resource }
+
+  # `include pattern` — wordexp(3)-expanded (tilde, $ENV, globs, backticks),
+  # relative to the including file, each file loaded once, spliced in place.
+  - component: Include
+    props:
+      value: *single_line
+    constants: { block: top, directive: include }
+
+  # =========================================================================
+  # Startup, fonts, bindings
+  # =========================================================================
+
+  # `exec` runs on initial startup only; `exec_always` also on every restart.
+  # `--no-startup-id` skips startup notification (the busy cursor) for
+  # programs that never end it.
+  - component: Exec
+    props:
+      command: *command
+      always: {}       # optional flag → exec_always
+      noStartupId: {}  # optional flag → --no-startup-id
+    constants: { kind: exec }
+
+  # `font <font>` — a pango description (`pango:DejaVu Sans Mono 8`) or an
+  # X core font name. Also the bar's font unless a `Font` inside the `Bar`
+  # overrides it (same node, same keyword).
+  - component: Font
+    props:
+      value: *single_line
+    constants: { block: any, directive: font }
+
+  # `bindsym [--release] [--border] [--whole-window] [--exclude-titlebar]
+  # <keys> <command>`. Valid at top level and inside a Mode.
+  - component: Bindsym
+    props:
+      keys: *bindsym_keys
+      command: *command
+      release: {}          # optional flag → --release (fire on key release)
+      border: {}           # optional flag → --border (mouse bindings: window border too)
+      wholeWindow: {}      # optional flag → --whole-window (mouse bindings: the whole window)
+      excludeTitlebar: {}  # optional flag → --exclude-titlebar (mouse bindings: not the titlebar)
+    constants: { kind: bindsym }
+
+  # `bindcode` — the same, by keycode (`xev`) instead of keysym: for keys the
+  # active keymap gives no name to.
+  - component: Bindcode
+    props:
+      keys: *bindcode_keys
+      command: *command
+      release: {}
+      border: {}
+      wholeWindow: {}
+      excludeTitlebar: {}
+    constants: { kind: bindcode }
+
+  # `mode [--pango_markup] "name" { bindings }` — while the mode is active,
+  # only its bindings work. Children: Bindsym/Bindcode, plus Comment/Blank/
+  # Set/SetFromResource, which the grammar allows inside the block too.
+  - component: Mode
+    container: true
+    children_as: bindings
+    props:
+      name:
+        pattern: '^(?!default$)[^\r\n"\\]+$'
+        error: 'must be a mode name without double quotes or backslashes, and not "default" (i3 reserves that exact spelling)'
+      pangoMarkup: {}  # optional flag → --pango_markup (the name is pango markup in the bar)
+    constants: { kind: mode }
+
+  # =========================================================================
+  # Floating, orientation, layout, borders
+  # =========================================================================
+
+  # `floating_modifier <modifiers>` — held with a mouse button to drag/resize
+  # floating windows (and tiling ones, see TilingDrag).
+  - component: FloatingModifier
+    props:
+      value: *modifiers
+    constants: { block: top, directive: floating_modifier }
+
+  # `tiling_drag off | modifier | titlebar | modifier titlebar`
+  - component: TilingDrag
+    props:
+      value:
+        enum: ["off", "modifier", "titlebar", "modifier titlebar", "titlebar modifier"]
+    constants: { block: top, directive: tiling_drag }
+
+  # `tiling_drag swap_modifier <modifiers>` (i3 4.24+) — held during a
+  # tiling drag to swap with the drop target instead of moving next to it.
+  - component: TilingDragSwapModifier
+    props:
+      value: *modifiers
+    constants: { block: top, directive: tiling_drag swap_modifier }
+
+  # `floating_minimum_size <w> x <h>` / `floating_maximum_size <w> x <h>` —
+  # -1 for "no constraint" on that axis, 0 for i3's defaults.
+  - component: FloatingMinimumSize
+    props:
+      width: *integer
+      height: *integer
+    constants: { block: top, kind: floating_size, directive: floating_minimum_size }
+  - component: FloatingMaximumSize
+    props:
+      width: *integer
+      height: *integer
+    constants: { block: top, kind: floating_size, directive: floating_maximum_size }
+
+  # `default_orientation horizontal|vertical|auto` — for new workspaces
+  # (auto: by the output's aspect ratio).
+  - component: DefaultOrientation
+    props:
+      value: { enum: ["horizontal", "vertical", "auto"] }
+    constants: { block: top, directive: default_orientation }
+
+  # `workspace_layout default|stacking|tabbed` — layout new containers start in.
+  - component: WorkspaceLayout
+    props:
+      value: { enum: ["default", "stacking", "tabbed"] }
+    constants: { block: top, directive: workspace_layout }
+
+  # `default_border normal|pixel [<n>[px]] | 1pixel | none` — for new tiling
+  # windows; `default_floating_border` the same for floating ones. `normal`
+  # is a titlebar, `pixel` a plain border; the width defaults to 2.
+  - component: DefaultBorder
+    props:
+      value: *border_style
+    constants: { block: top, directive: default_border }
+  - component: DefaultFloatingBorder
+    props:
+      value: *border_style
+    constants: { block: top, directive: default_floating_border }
+
+  # `hide_edge_borders none|vertical|horizontal|both|smart|smart_no_gaps` —
+  # `smart` hides all borders when a workspace has one window;
+  # `smart_no_gaps` only when it also has no gaps.
+  - component: HideEdgeBorders
+    props:
+      value: { enum: ["none", "vertical", "horizontal", "both", "smart", "smart_no_gaps"] }
+    constants: { block: top, directive: hide_edge_borders }
+
+  # `title_align left|center|right`
+  - component: TitleAlign
+    props:
+      value: { enum: ["left", "center", "right"] }
+    constants: { block: top, directive: title_align }
+
+  # `show_marks yes|no` — draw window marks in the title bar.
+  - component: ShowMarks
+    props:
+      value: *yes_no
+    constants: { block: top, directive: show_marks }
+
+  # =========================================================================
+  # Window rules
+  # =========================================================================
+
+  # `for_window [criteria] command` — run the command whenever a window
+  # comes to match the criteria (on map and on every property change).
+  - component: ForWindow
+    props:
+      criteria: *criteria
+      command: *command
+    constants: { kind: for_window }
+
+  # `assign [criteria] → workspace <name>` / `→ workspace number <n>` /
+  # `→ output <name>` — on map only, first matching assign wins. Three nodes
+  # because i3 matches the `workspace`/`number`/`output` keywords as
+  # case-insensitive *prefixes* of whatever follows: a workspace literally
+  # named "Workspace 2" has to be quoted or i3 reads it as workspace "2".
+  # The template quotes the name whenever that could happen.
+  - component: AssignWorkspace
+    props:
+      criteria: *assign_criteria
+      workspace: *workspace
+    constants: { kind: assign_workspace }
+
+  # `assign [criteria] → workspace number <n>` — by number, so "2: work" and
+  # "2" both match; `number` takes a `<n>` or `<n>: <name>` (name used when
+  # the workspace does not exist yet). i3 drops the assignment, with only a
+  # log line, when the value does not start with a number — hence the
+  # stricter pattern (a $variable is allowed through).
+  - component: AssignWorkspaceNumber
+    props:
+      criteria: *assign_criteria
+      number:
+        pattern: '^([0-9]+[^\t\r\n"\\]*|\$[A-Za-z_][A-Za-z0-9_]*)$'
+        error: 'must start with the workspace number ("2" or "2: work"), or be a $variable'
+    constants: { kind: assign_workspace_number }
+
+  # `assign [criteria] → output <name>` — a RandR/monitor name, or
+  # left/right/up/down (relative to the focused output), primary, nonprimary.
+  - component: AssignOutput
+    props:
+      criteria: *assign_criteria
+      output: *workspace
+    constants: { kind: assign_output }
+
+  # `no_focus [criteria]` — do not focus a matching window when it opens
+  # (the urgency hint is set instead), unless it is the workspace's only window.
+  - component: NoFocus
+    props:
+      criteria: *criteria
+    constants: { kind: no_focus }
+
+  # =========================================================================
+  # Focus behaviour
+  # =========================================================================
+
+  # `focus_follows_mouse yes|no`
+  - component: FocusFollowsMouse
+    props:
+      value: *yes_no
+    constants: { block: top, directive: focus_follows_mouse }
+
+  # `mouse_warping output|none` — move the pointer when focus changes output.
+  - component: MouseWarping
+    props:
+      value: { enum: ["output", "none"] }
+    constants: { block: top, directive: mouse_warping }
+
+  # `focus_wrapping yes|no|force|workspace`
+  - component: FocusWrapping
+    props:
+      value: { enum: ["yes", "no", "force", "workspace"] }
+    constants: { block: top, directive: focus_wrapping }
+
+  # Deprecated: `force_focus_wrapping yes` is `focus_wrapping force`.
+  - component: ForceFocusWrapping
+    props:
+      value: *yes_no
+    constants: { block: top, directive: force_focus_wrapping }
+
+  # `workspace_auto_back_and_forth yes|no` — switching to the current
+  # workspace goes back to the previous one instead.
+  - component: WorkspaceAutoBackAndForth
+    props:
+      value: *yes_no
+    constants: { block: top, directive: workspace_auto_back_and_forth }
+
+  # `force_display_urgency_hint <ms> ms` — keep the urgency hint visible for
+  # that long after switching to the workspace.
+  - component: ForceDisplayUrgencyHint
+    props:
+      value: { pattern: '^[0-9]+( ?ms)?$', error: 'must be a duration in ms, e.g. "500 ms"' }
+    constants: { block: top, directive: force_display_urgency_hint }
+
+  # `focus_on_window_activation smart|urgent|focus|none`
+  - component: FocusOnWindowActivation
+    props:
+      value: { enum: ["smart", "urgent", "focus", "none"] }
+    constants: { block: top, directive: focus_on_window_activation }
+
+  # `popup_during_fullscreen smart|ignore|leave_fullscreen|all`
+  - component: PopupDuringFullscreen
+    props:
+      value: { enum: ["smart", "ignore", "leave_fullscreen", "all"] }
+    constants: { block: top, directive: popup_during_fullscreen }
+
+  # =========================================================================
+  # Outputs and workspaces
+  # =========================================================================
+
+  # `workspace <ws> output <output> [<output>…]` — first available output
+  # wins; outputs are RandR names, monitor names, or `primary`. `outputs` is
+  # an array (`outputs={["DP-1", "Dell UP2414Q"]}`), each name quoted by the
+  # template when it needs to be, like every other output name here.
+  - component: WorkspaceOutput
+    props:
+      workspace: *workspace
+      outputs:
+        items: *workspace
+    constants: { kind: workspace_output }
+
+  # `workspace <ws> gaps <scope> <n>[px]` — per-workspace gaps.
+  - component: WorkspaceGaps
+    props:
+      workspace: *workspace
+      scope: *gap_scope
+      size: *pixels
+    constants: { kind: workspace_gaps }
+
+  # `force_xinerama yes|no` — use Xinerama instead of RandR (old nvidia drivers).
+  - component: ForceXinerama
+    props:
+      value: *yes_no
+    constants: { block: top, directive: force_xinerama }
+
+  # `disable_randr15 yes|no` — use RandR outputs rather than 1.5 monitors.
+  - component: DisableRandr15
+    props:
+      value: *yes_no
+    constants: { block: top, directive: disable_randr15 }
+
+  # `fake_outputs WxH+X+Y[P][,…]` — testcase-only: pretend these outputs
+  # exist; a trailing `P` marks the primary one.
+  - component: FakeOutputs
+    props:
+      value:
+        pattern: '^[0-9]+x[0-9]+\+[0-9]+\+[0-9]+P?(,[0-9]+x[0-9]+\+[0-9]+\+[0-9]+P?)*$'
+        error: 'must be comma-separated WxH+X+Y geometries (optionally suffixed P for primary), e.g. "1024x768+0+0P,1024x768+1024+0"'
+    constants: { block: top, directive: fake_outputs }
+
+  # =========================================================================
+  # Gaps
+  # =========================================================================
+
+  # `gaps inner|outer|horizontal|vertical|top|right|bottom|left <n>[px]`
+  # (i3 4.22+) — inner is between windows, the rest are screen-edge gaps.
+  - component: Gaps
+    props:
+      scope: *gap_scope
+      size: *pixels
+    constants: { kind: gaps }
+
+  # `smart_gaps on|off|inverse_outer` — no gaps with a single window;
+  # `inverse_outer` shows outer gaps *only* with a single window.
+  - component: SmartGaps
+    props:
+      value: { enum: ["on", "off", "inverse_outer"] }
+    constants: { block: top, directive: smart_gaps }
+
+  # `smart_borders on|no_gaps` — no borders with a single window (`no_gaps`:
+  # only when that workspace also has no gaps). There is no `off`: the
+  # directive is off unless present.
+  - component: SmartBorders
+    props:
+      value: { enum: ["on", "no_gaps"] }
+    constants: { block: top, directive: smart_borders }
+
+  # =========================================================================
+  # Colors
+  # =========================================================================
+
+  # `client.<class> <border> <background> <text> <indicator> <child_border>`
+  # — all five, as the userguide's own table gives them (i3 would let the
+  # last two default; see the header on why they are required here).
+  # `placeholder` ignores border and indicator — pass anything valid.
+  - component: ClientColor
+    props:
+      class: { enum: ["focused", "focused_inactive", "unfocused", "urgent", "placeholder"] }
+      border: *color
+      background: *color
+      text: *color
+      indicator: *color    # where a new window would open (split direction)
+      childBorder: *color  # the border around the window itself
+    constants: { kind: client_color }
+
+  # `client.focused_tab_title <border> <background> <text>` — the title of a
+  # tab/stack container that holds the focused window without being it.
+  # Its own node because i3 warns at every load if the two extra colors are
+  # given for this class ("have no effect").
+  - component: ClientFocusedTabTitle
+    props:
+      border: *color
+      background: *color
+      text: *color
+    constants: { kind: client_focused_tab_title }
+
+  # `client.background <color>` — the one single-color client class: paints
+  # the client window's own background where the client leaves it exposed.
+  - component: ClientBackground
+    props:
+      value: *color
+    constants: { block: top, directive: client.background }
+
+  # =========================================================================
+  # IPC and internals
+  # =========================================================================
+
+  # `ipc_socket <path>` — where to create the IPC socket (default:
+  # $XDG_RUNTIME_DIR/i3/ipc-socket.%p).
+  - component: IpcSocket
+    props:
+      value: *single_line
+    constants: { block: top, directive: ipc_socket }
+
+  # `ipc_kill_timeout <ms>` — how long an unresponsive IPC client gets
+  # before it is disconnected.
+  - component: IpcKillTimeout
+    props:
+      value: *integer
+    constants: { block: top, directive: ipc_kill_timeout }
+
+  # `restart_state <path>` — testcase-only: the layout file to restore from.
+  - component: RestartState
+    props:
+      value: *single_line
+    constants: { block: top, directive: restart_state }
+
+  # =========================================================================
+  # bar { }
+  # =========================================================================
+
+  # `bar { … }` — one i3bar instance per block. Children: the Bar* settings
+  # below, `Font`, BarColors, and Comment/Blank/Set/SetFromResource.
+  # Settings that the userguide says may repeat (`output`) simply appear
+  # more than once.
+  - component: Bar
+    container: true
+    children_as: settings
+    constants: { kind: bar }
+
+  # `i3bar_command <command>` — the bar program itself, e.g. `i3bar --transparency`.
+  - component: BarCommand
+    props:
+      value: *single_line
+    constants: { block: bar, directive: i3bar_command }
+
+  # `status_command <command>` — the status line producer (i3status, …).
+  - component: BarStatusCommand
+    props:
+      value: *single_line
+    constants: { block: bar, directive: status_command }
+
+  # `workspace_command <command>` — replaces the workspace buttons' content.
+  - component: BarWorkspaceCommand
+    props:
+      value: *single_line
+    constants: { block: bar, directive: workspace_command }
+
+  # `socket_path <path>` — the IPC socket this bar connects to.
+  - component: BarSocketPath
+    props:
+      value: *single_line
+    constants: { block: bar, directive: socket_path }
+
+  # `mode dock|hide|invisible`
+  - component: BarMode
+    props:
+      value: { enum: ["dock", "hide", "invisible"] }
+    constants: { block: bar, directive: mode }
+
+  # `hidden_state hide|show` — what a `hide`-mode bar does by default.
+  - component: BarHiddenState
+    props:
+      value: { enum: ["hide", "show"] }
+    constants: { block: bar, directive: hidden_state }
+
+  # `id <bar_id>` — for `i3-msg 'bar mode toggle <id>'` and the like.
+  - component: BarId
+    props:
+      value: *word
+    constants: { block: bar, directive: id }
+
+  # `modifier <modifiers>|off|none` — the key that shows a hidden bar.
+  - component: BarModifier
+    props:
+      value:
+        pattern: '^(off|none|(Mod[1-5]|Shift|Control|Ctrl|\$[A-Za-z_][A-Za-z0-9_]*)(\+(Mod[1-5]|Shift|Control|Ctrl|\$[A-Za-z_][A-Za-z0-9_]*))*)$'
+        error: 'must be off, none, or "+"-joined modifiers (Mod1-Mod5/Shift/Control/Ctrl or a $variable)'
+    constants: { block: bar, directive: modifier }
+
+  # `bindsym [--release] button<n> <command>` — mouse buttons on the bar.
+  - component: BarBindsym
+    props:
+      button: { pattern: '^button[1-9][0-9]*$', error: 'must be button<n> with n from 1, e.g. button4' }
+      command: *command
+      release: {}  # optional flag → --release
+    constants: { kind: bar_bindsym }
+
+  # Deprecated: `wheel_up_cmd`/`wheel_down_cmd` are `bindsym button4`/`button5`.
+  - component: BarWheelUpCmd
+    props:
+      value: *single_line
+    constants: { block: bar, directive: wheel_up_cmd }
+  - component: BarWheelDownCmd
+    props:
+      value: *single_line
+    constants: { block: bar, directive: wheel_down_cmd }
+
+  # `position top|bottom`
+  - component: BarPosition
+    props:
+      value: { enum: ["top", "bottom"] }
+    constants: { block: bar, directive: position }
+
+  # `output <output>` — a RandR/monitor name, `primary` or `nonprimary`; one
+  # per line, repeat the node for several. Quoted by the template if needed.
+  - component: BarOutput
+    props:
+      value: *workspace
+    constants: { block: bar, directive: output, word: "true" }
+
+  # `tray_output none|primary|<output>`
+  - component: BarTrayOutput
+    props:
+      value: *workspace
+    constants: { block: bar, directive: tray_output, word: "true" }
+
+  # `tray_padding <n>[px]`
+  - component: BarTrayPadding
+    props:
+      value: *pixels
+    constants: { block: bar, directive: tray_padding }
+
+  # `separator_symbol <string>` — drawn between status blocks instead of a
+  # line. Rendered in double quotes so a symbol with surrounding spaces keeps
+  # them, hence no `"` or `\` inside.
+  - component: BarSeparatorSymbol
+    props:
+      value: { pattern: '^[^"\\\r\n]+$', error: 'must be a non-empty single line without double quotes or backslashes' }
+    constants: { block: bar, directive: separator_symbol, quoted: "true" }
+
+  # `binding_mode_indicator yes|no`
+  - component: BarBindingModeIndicator
+    props:
+      value: *yes_no
+    constants: { block: bar, directive: binding_mode_indicator }
+
+  # `workspace_buttons yes|no`
+  - component: BarWorkspaceButtons
+    props:
+      value: *yes_no
+    constants: { block: bar, directive: workspace_buttons }
+
+  # `workspace_min_width <n>[px]`
+  - component: BarWorkspaceMinWidth
+    props:
+      value: *pixels
+    constants: { block: bar, directive: workspace_min_width }
+
+  # `strip_workspace_numbers yes|no` — show "vim" for "2: vim".
+  - component: BarStripWorkspaceNumbers
+    props:
+      value: *yes_no
+    constants: { block: bar, directive: strip_workspace_numbers }
+
+  # `strip_workspace_name yes|no` — show "2" for "2: vim".
+  - component: BarStripWorkspaceName
+    props:
+      value: *yes_no
+    constants: { block: bar, directive: strip_workspace_name }
+
+  # `verbose yes|no` — i3bar debug logging.
+  - component: BarVerbose
+    props:
+      value: *yes_no
+    constants: { block: bar, directive: verbose }
+
+  # `height <px>` — a fixed bar height instead of the font's.
+  - component: BarHeight
+    props:
+      value: { pattern: '^[0-9]+$', error: 'must be a pixel count' }
+    constants: { block: bar, directive: height }
+
+  # `padding <all> | <vertical> <horizontal> | <top> <horizontal> <bottom> |
+  # <top> <right> <bottom> <left>`, each `<n>[px]`.
+  - component: BarPadding
+    props:
+      value:
+        pattern: '^-?[0-9]+(px)?( -?[0-9]+(px)?){0,3}$'
+        error: 'must be 1 to 4 space-separated pixel counts, optionally suffixed "px"'
+    constants: { block: bar, directive: padding }
+
+  # `colors { … }` inside a bar. Children: BarColor, BarWorkspaceColor,
+  # Comment/Blank/Set/SetFromResource.
+  - component: BarColors
+    container: true
+    children_as: colors
+    constants: { kind: bar_colors }
+
+  # The single-color classes: `background`, `statusline`, `separator`, and
+  # their `focused_*` variants for the bar on the focused output.
+  - component: BarColor
+    props:
+      class: { enum: ["background", "statusline", "separator", "focused_background", "focused_statusline", "focused_separator"] }
+      value: *color
+    constants: { kind: bar_color }
+
+  # The three-color classes: `<class> <border> <background> <text>`. All
+  # three required — i3's old two-color form has the arguments in a
+  # different order (see the header), so an optional `text` would be a trap.
+  - component: BarWorkspaceColor
+    props:
+      class: { enum: ["focused_workspace", "active_workspace", "inactive_workspace", "urgent_workspace", "binding_mode"] }
+      border: *color
+      background: *color
+      text: *color
+    constants: { kind: bar_workspace_color }
+---
+template: |
+  {#- A workspace/output name is quoted only when it needs to be: it has a
+      character that ends a word for i3 (space, comma, semicolon, bracket),
+      or it starts with one of the keywords (or the arrow) i3 would
+      otherwise eat as a prefix in an `assign` target. A bare number, or a
+      $variable that already expands to a quoted value, passes through. -#}
+  {%- macro ws(name) -%}
+  {%- set l = name|lower -%}
+  {%- if " " in name or "," in name or ";" in name or "]" in name or l is startingwith "workspace" or l is startingwith "number" or l is startingwith "output" or l is startingwith "→" %}"{{ name }}"{% else %}{{ name }}{% endif -%}
+  {%- endmacro -%}
+
+  {#- A flag prop is valid when absent, null, or a boolean. Anything else
+      (`release="no"` would otherwise count as true) makes the whole line a
+      tauler_schema_error, since a bad token inside a binding line would
+      still parse as a key. Returns "" (falsy) or "x" (truthy). -#}
+  {%- macro badflag(v) -%}
+  {%- if v is defined and v is not none and v is not boolean %}x{% endif -%}
+  {%- endmacro -%}
+
+  {#- bindsym/bindcode, at top level and inside a mode. `kind` is the keyword. -#}
+  {%- macro binding(b) -%}
+  {%- if badflag(b.release) or badflag(b.border) or badflag(b.wholeWindow) or badflag(b.excludeTitlebar) -%}
+  tauler_schema_error: {{ b.kind }} {{ b.keys }} has a flag that is not a bare attribute or boolean
+  {%- else -%}
+  {{ b.kind }}{% if b.release %} --release{% endif %}{% if b.border %} --border{% endif %}{% if b.wholeWindow %} --whole-window{% endif %}{% if b.excludeTitlebar %} --exclude-titlebar{% endif %} {{ b.keys }} {{ b.command }}
+  {%- endif -%}
+  {%- endmacro -%}
+
+  {#- The lines every block accepts: comments, blank lines, variables.
+      `indent` is the block's indentation; a blank line gets none. Anything
+      else reaching here is a node in a block that does not take it — it
+      renders a line that is not an i3 directive, so i3 fails at it loudly
+      instead of the node vanishing. -#}
+  {%- macro plain(e, indent="") -%}
+  {%- if e.kind == "comment" %}{{ indent }}#{% if e.text %} {{ e.text }}{% endif %}
+  {%- elif e.kind == "blank" %}
+  {%- elif e.kind == "set" %}{{ indent }}set {{ e.name }} {{ e.value }}
+  {%- elif e.kind == "set_from_resource" %}{{ indent }}set_from_resource {{ e.name }} {{ e.resource }} {{ e.fallback }}
+  {%- else %}{{ indent }}tauler_schema_error: a {{ e.kind if e.kind is defined else (e.directive if e.directive is defined else "foreign") }} node is not allowed in this block
+  {%- endif -%}
+  {%- endmacro -%}
+
+  {%- macro client_color(c) -%}
+  client.{{ c.class }} {{ c.border }} {{ c.background }} {{ c.text }} {{ c.indicator }} {{ c.childBorder }}
+  {%- endmacro -%}
+
+  {%- macro bar(b) -%}
+  bar {
+  {%- for s in b.settings %}
+  {%- if s.kind == "bar_bindsym" %}
+  {%- if badflag(s.release) %}
+      tauler_schema_error: bindsym {{ s.button }} release is not a bare attribute or boolean
+  {%- else %}
+      bindsym {% if s.release %}--release {% endif %}{{ s.button }} {{ s.command }}
+  {%- endif %}
+  {%- elif s.kind == "bar_colors" %}
+      colors {
+  {%- for c in s.colors %}
+  {%- if c.kind == "bar_color" %}
+          {{ c.class }} {{ c.value }}
+  {%- elif c.kind == "bar_workspace_color" %}
+          {{ c.class }} {{ c.border }} {{ c.background }} {{ c.text }}
+  {%- else %}
+  {{ plain(c, "        ") }}
+  {%- endif %}
+  {%- endfor %}
+      }
+  {%- elif s.directive and (s.block == "bar" or s.block == "any") %}
+      {{ s.directive }} {% if s.quoted %}"{{ s.value }}"{% elif s.word %}{{ ws(s.value) }}{% else %}{{ s.value }}{% endif %}
+  {%- else %}
+  {{ plain(s, "    ") }}
+  {%- endif %}
+  {%- endfor %}
+  }
+  {%- endmacro -%}
+
+  # GENERATED by tauler from i3-config.schema.yaml — do not edit by hand,
+  # edit the tauler layout that renders it instead.
+  {% for e in entries %}
+  {%- if e.kind == "exec" %}
+  {%- if badflag(e.always) or badflag(e.noStartupId) %}
+  tauler_schema_error: exec {{ e.command }} has a flag that is not a bare attribute or boolean
+  {%- else %}
+  exec{% if e.always %}_always{% endif %}{% if e.noStartupId %} --no-startup-id{% endif %} {{ e.command }}
+  {%- endif %}
+  {%- elif e.kind == "bindsym" or e.kind == "bindcode" %}
+  {{ binding(e) }}
+  {%- elif e.kind == "mode" %}
+  {%- if badflag(e.pangoMarkup) %}
+  tauler_schema_error: mode "{{ e.name }}" pangoMarkup is not a bare attribute or boolean
+  {%- else %}
+  mode {% if e.pangoMarkup %}--pango_markup {% endif %}"{{ e.name }}" {
+  {%- for b in e.bindings %}
+  {%- if b.kind == "bindsym" or b.kind == "bindcode" %}
+      {{ binding(b) }}
+  {%- else %}
+  {{ plain(b, "    ") }}
+  {%- endif %}
+  {%- endfor %}
+  }
+  {%- endif %}
+  {%- elif e.kind == "floating_size" %}
+  {{ e.directive }} {{ e.width }} x {{ e.height }}
+  {%- elif e.kind == "for_window" %}
+  for_window [{{ e.criteria }}] {{ e.command }}
+  {%- elif e.kind == "assign_workspace" %}
+  assign [{{ e.criteria }}] → workspace {{ ws(e.workspace) }}
+  {%- elif e.kind == "assign_workspace_number" %}
+  assign [{{ e.criteria }}] → workspace number {{ ws(e.number) }}
+  {%- elif e.kind == "assign_output" %}
+  assign [{{ e.criteria }}] → output {{ ws(e.output) }}
+  {%- elif e.kind == "no_focus" %}
+  no_focus [{{ e.criteria }}]
+  {%- elif e.kind == "workspace_output" %}
+  {%- if e.outputs|length == 0 %}
+  tauler_schema_error: workspace {{ ws(e.workspace) }} output has no outputs
+  {%- else %}
+  workspace {{ ws(e.workspace) }} output {% for o in e.outputs %}{{ ws(o) }}{% if not loop.last %} {% endif %}{% endfor %}
+  {%- endif %}
+  {%- elif e.kind == "workspace_gaps" %}
+  workspace {{ ws(e.workspace) }} gaps {{ e.scope }} {{ e.size }}
+  {%- elif e.kind == "gaps" %}
+  gaps {{ e.scope }} {{ e.size }}
+  {%- elif e.kind == "client_color" %}
+  {{ client_color(e) }}
+  {%- elif e.kind == "client_focused_tab_title" %}
+  client.focused_tab_title {{ e.border }} {{ e.background }} {{ e.text }}
+  {%- elif e.kind == "bar" %}
+  {{ bar(e) }}
+  {%- elif e.directive and (e.block == "top" or e.block == "any") %}
+  {{ e.directive }} {{ e.value }}
+  {%- else %}
+  {{ plain(e) }}
+  {%- endif %}
+  {%- endfor %}
