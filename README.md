@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { WeatherCard, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { WeatherCard, OutputVolume, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -52,35 +52,58 @@ While the first reading is still loading, or if a fetch fails, the card shows
 Requires `curl`, and bash at `/usr/bin/bash` (the path is hardcoded in the
 stream command).
 
-### VolumeSlider / VolumeKnob
+### OutputVolume / InputVolume + VolumeSlider / VolumeKnob
 
-Two controls over the default PipeWire audio sink: a horizontal slider and a
-rotary knob. Pick one; they show the same number, so using both is mostly a
-demo of two Controls over one value.
+Volume, split the way [tauler's component kinds](https://github.com/kantord/tauler/blob/main/docs/src/content/docs/docs/components.md)
+split things: two **Data** components that own the number, and two
+**Controls** that draw it. Any control composes with either source.
 
 ```jsx
-<VolumeSlider />
-<VolumeKnob />
-<VolumeSlider label="Speakers" step={2} />
-<VolumeKnob label={null} size={36} />       // knob only, no label row
+import { OutputVolume, InputVolume, VolumeSlider, VolumeKnob } from "@gh/kantord/dotfiles-tauler";
+
+<OutputVolume>
+  {(v, a) => <VolumeSlider label="Speakers" value={v?.volume} muted={v?.muted}
+                           on_change={a.setVolume} on_toggle_mute={a.toggleMute} />}
+</OutputVolume>
+
+<InputVolume>
+  {(v, a) => <VolumeKnob label="Mic" value={v?.volume} muted={v?.muted}
+                         on_change={a.setVolume} on_toggle_mute={a.toggleMute} />}
+</InputVolume>
 ```
 
-| Prop    | Default                       |                                                     |
-|---------|-------------------------------|-----------------------------------------------------|
-| `bin`   | `~/.local/bin/tauler-volume`  | Where you put the module script (below).           |
-| `label` | `"Volume"`                    | Label row text. Clicking it toggles mute. `null` hides the row, and the percentage with it. |
-| `step`  | `5`                           | Volume granularity in percent.                     |
-| `size`  | `28`                          | Knob only: diameter in px.                         |
+`OutputVolume` is the default PipeWire sink, `InputVolume` the default source.
+Each calls its child with `state` and `actions`:
 
-Neither component holds the value. The module owns it: a drag sends an
-intent, `wpctl` changes the sink, the module emits the new volume, and the
-next tick redraws the control — so changes made elsewhere (media keys,
-pavucontrol) show up within two seconds too. Muted draws as 0 without
-touching the stored volume, so unmuting comes back where it was.
+- `state` is `{ volume, muted }`, or `null` until the module answers and on a
+  machine where that device does not exist (no microphone, say). Render
+  nothing in that case if you prefer: `{(v, a) => v && <VolumeSlider ... />}`.
+- `actions.setVolume(n)` and `actions.toggleMute()` return intents, so they go
+  straight into an `on_change` or an `on_click`.
+- Both take `bin` (default `~/.local/bin/tauler-volume`), where you put the
+  module script. Both read the same bin, so using both costs one subprocess.
 
-Both need the module script, `bin/tauler-volume`, on disk. Git-package imports
-resolve to `index.jsx` only and the package cache path includes the commit
-sha, so the component cannot point at its own copy; put it somewhere stable:
+`VolumeSlider` and `VolumeKnob` hold nothing. Props:
+
+| Prop             |              |                                                                    |
+|------------------|--------------|--------------------------------------------------------------------|
+| `value`          |              | 0–100. `undefined` draws as 0.                                     |
+| `muted`          | `false`      | Draws as 0 without touching `value`, so unmuting comes back where it was. |
+| `on_change`      |              | Gets the new 0–100 value, returns intents.                         |
+| `on_toggle_mute` |              | Optional. When given, clicking the label toggles mute.             |
+| `label`          | `"Volume"`   | Label row text. `null` hides the row, and the percentage with it.  |
+| `step`           | `5`          | Granularity in percent.                                            |
+| `size`           | `28`         | Knob only: diameter in px.                                         |
+
+The round trip is the whole design: a drag sends an intent, `wpctl` changes
+the device, the module emits the new state, and the next tick redraws the
+control. Changes made elsewhere (media keys, pavucontrol) show up within two
+seconds the same way.
+
+Both Data components need the module script, `bin/tauler-volume`, on disk.
+Git-package imports resolve to `index.jsx` only and the package cache path
+includes the commit sha, so the component cannot point at its own copy; put
+it somewhere stable:
 
 ```sh
 cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/bin/

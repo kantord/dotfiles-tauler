@@ -1,7 +1,7 @@
 import { Knob } from '@ui/knob';
-import { DEFAULT_BIN, VolumeLabel } from './volume.jsx';
+import VolumeLabel from './VolumeLabel.jsx';
 
-// A rotary knob over the default audio sink, same round trip as VolumeSlider.
+// A Control: the same contract as VolumeSlider, drawn as a rotary knob.
 //
 // <Knob> talks in degrees and has no min or max, because it reads how far you
 // have turned it rather than what is under the pointer. Putting it on a 0–100
@@ -23,23 +23,16 @@ const degreesToVolume = (deg, step) => {
   return Math.round(along / SWEEP * 100 / step) * step;
 };
 
-export default function VolumeKnob({ bin = DEFAULT_BIN, label = "Volume", step = 5, size = 28 }) {
+export default function VolumeKnob({ value, muted = false, on_change, on_toggle_mute, label = "Volume", step = 5, size = 28 }) {
+  const volume = value ?? 0;
   return (
-    <Module bin={bin}>
-      {(data, events) => {
-        const volume = data?.volume ?? 0;
-        const muted = data?.muted ?? false;
-        return (
-          <div class="flex flex-col gap-[6px] w-full">
-            {label && <VolumeLabel label={label} volume={volume} muted={muted} events={events} />}
-            <Knob
-              class={`w-[${size}px] h-[${size}px]`}
-              value={volumeToDegrees(muted ? 0 : volume)}
-              on_change={deg => events.setVolume({ volume: degreesToVolume(deg, step) })}
-            />
-          </div>
-        );
-      }}
-    </Module>
+    <div class="flex flex-col gap-[6px] w-full">
+      {label && <VolumeLabel label={label} value={volume} muted={muted} on_toggle_mute={on_toggle_mute} />}
+      <Knob
+        class={`w-[${size}px] h-[${size}px]`}
+        value={volumeToDegrees(muted ? 0 : volume)}
+        on_change={on_change && (deg => on_change(degreesToVolume(deg, step)))}
+      />
+    </div>
   );
 }

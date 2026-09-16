@@ -7,5 +7,6 @@ export { default as KittyConfig } from './components/KittyConfig.jsx';
 export { default as RofiConfig } from './components/RofiConfig.jsx';
 export { default as RofiTheme } from './components/RofiTheme.jsx';
 export { default as RecentFilesTheme } from './components/RecentFilesTheme.jsx';
+export { OutputVolume, InputVolume } from './components/Volume.jsx';
 export { default as VolumeSlider } from './components/VolumeSlider.jsx';
 export { default as VolumeKnob } from './components/VolumeKnob.jsx';
