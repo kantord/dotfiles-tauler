@@ -1,54 +1,85 @@
 #!/usr/bin/env bash
-# Default audio sink and source volume as a tauler module: reads intents on
-# stdin, writes state on stdout. Backs <OutputVolume> and <InputVolume>; copy it
+# PipeWire audio as a tauler module: reads intents on stdin, writes state on
+# stdout. Backs <OutputVolume>, <InputVolume> and <AudioChannels>; copy it
 # somewhere on disk (the components default to ~/.local/bin/tauler-volume) and
-# make it executable. Requires wpctl (PipeWire/WirePlumber) and jq.
+# make it executable. Requires pw-dump and wpctl (PipeWire/WirePlumber) and jq.
 #
-# Vocabulary (the layout holds nothing, this does):
-#   {"type":"setVolume","target":"sink"|"source","volume":N}   N in 0..100
-#   {"type":"toggleMute","target":"sink"|"source"}
-# `target` defaults to "sink". Emits
-#   {"sink":{"volume":N,"muted":bool},"source":{"volume":N,"muted":bool}}
-# on start, after every intent, and every 2s so that changes made elsewhere
-# (pavucontrol, media keys) still show up. A side with no default device is
-# `null`.
+# Emits, on start, after every intent, and every 2s so that changes made
+# elsewhere (pavucontrol, media keys) still show up:
+#   {"sink":{"volume":N,"muted":bool},      default output device, or null
+#    "source":{"volume":N,"muted":bool},    default input device, or null
+#    "channels":[{"id":87,"kind":"output","type":"device","name":"alsa_output...",
+#                 "description":"Headphones","app":null,"media":null,
+#                 "state":"running","default":true,"volume":43,"muted":false}, ...]}
+# `channels` is every audio sink, source, playback stream and recording stream
+# PipeWire knows about (internal plumbing nodes left out). `kind` is the
+# direction ("output" or "input"), `type` tells a device from an app's stream,
+# `state` is PipeWire's ("running" means audio is flowing, "suspended"/"idle"
+# means not), `app` and `media` are the stream's application and title.
+# Volumes are on wpctl's cubic scale, 0..100, so they match what wpctl prints.
+#
+# Intents:
+#   {"type":"setVolume","id":87,"volume":N}          N in 0..100
+#   {"type":"setVolume","target":"sink","volume":N}  target: "sink"|"source"
+#   {"type":"toggleMute","id":87}
+#   {"type":"toggleMute","target":"source"}
+# `id` is a channel id from the list; `target` picks the default device and is
+# what is used when neither is given.
 #
 # One writer only. A background poller would interleave its lines with the
 # reader's, and tauler parses one JSON object per line.
 set -uo pipefail
 
-device() {
-    case $1 in
+JQ='
+  [ .[] | select(.type == "PipeWire:Interface:Metadata" and .props["metadata.name"] == "default")
+    | .metadata[]? | select(.key == "default.audio.sink" or .key == "default.audio.source") | .value.name ] as $defaults
+  | [ .[] | select(.type == "PipeWire:Interface:Node")
+      | .info as $i | ($i.props["media.class"] // "") as $c
+      | select($c == "Audio/Sink" or $c == "Audio/Source" or $c == "Stream/Output/Audio" or $c == "Stream/Input/Audio")
+      | ($i.params.Props[0] // {}) as $p
+      | { id,
+          kind: (if $c == "Audio/Sink" or $c == "Stream/Output/Audio" then "output" else "input" end),
+          type: (if $c | startswith("Audio/") then "device" else "stream" end),
+          name: $i.props["node.name"],
+          description: ($i.props["node.description"] // $i.props["media.name"] // $i.props["node.name"]),
+          app: $i.props["application.name"],
+          media: $i.props["media.name"],
+          state: $i.state,
+          default: (($defaults | index($i.props["node.name"])) != null),
+          volume: (($p.channelVolumes // [0]) | max | pow(.; 1 / 3) * 100 | round),
+          muted: ($p.mute // false) } ]
+  | { sink:   (map(select(.default and .kind == "output")) | first | if . then {volume, muted} else null end),
+      source: (map(select(.default and .kind == "input"))  | first | if . then {volume, muted} else null end),
+      channels: . }
+'
+
+emit() {
+    pw-dump 2>/dev/null | jq -c "$JQ" 2>/dev/null || echo '{"sink":null,"source":null,"channels":[]}'
+}
+
+# Which wpctl object an intent means: a channel id if it names one, otherwise
+# the default device for its target.
+object() {
+    local id target
+    id=$(jq -r 'try .id // empty' <<<"$1")
+    if [[ -n $id ]]; then echo "$id"; return; fi
+    target=$(jq -r 'try .target // "sink"' <<<"$1")
+    case $target in
     source) echo "@DEFAULT_AUDIO_SOURCE@" ;;
     *)      echo "@DEFAULT_AUDIO_SINK@" ;;
     esac
 }
 
-state() {
-    local out volume muted
-    out=$(wpctl get-volume "$(device "$1")" 2>/dev/null) || { echo null; return; }
-    # "Volume: 1.17" or "Volume: 0.40 [MUTED]"
-    volume=$(awk '{printf "%d", $2 * 100 + 0.5}' <<<"$out")
-    muted=false
-    [[ $out == *MUTED* ]] && muted=true
-    printf '{"volume":%s,"muted":%s}' "$volume" "$muted"
-}
-
-emit() {
-    printf '{"sink":%s,"source":%s}\n' "$(state sink)" "$(state source)"
-}
-
 handle() {
-    local line=$1 type target volume
+    local line=$1 type volume
     type=$(jq -r 'try .type // empty' <<<"$line")
-    target=$(jq -r 'try .target // "sink"' <<<"$line")
     case $type in
     setVolume)
         volume=$(jq -r 'try .volume // empty' <<<"$line")
-        [[ -n $volume ]] && wpctl set-volume "$(device "$target")" "${volume}%"
+        [[ -n $volume ]] && wpctl set-volume "$(object "$line")" "${volume}%"
         ;;
     toggleMute)
-        wpctl set-mute "$(device "$target")" toggle
+        wpctl set-mute "$(object "$line")" toggle
         ;;
     esac
 }

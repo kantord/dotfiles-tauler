@@ -81,7 +81,52 @@ Each calls its child with `state` and `actions`:
 - `actions.setVolume(n)` and `actions.toggleMute()` return intents, so they go
   straight into an `on_change` or an `on_click`.
 - Both take `bin` (default `~/.local/bin/tauler-volume`), where you put the
-  module script. Both read the same bin, so using both costs one subprocess.
+  module script. Every volume Data component reads the same bin, so using
+  several costs one subprocess.
+
+### AudioChannels
+
+The whole mixer as data: every PipeWire sink, source, playback stream and
+recording stream, so a layout can filter down to whatever it cares about
+and put a control on each.
+
+```jsx
+import { AudioChannels, VolumeSlider } from "@gh/kantord/dotfiles-tauler";
+
+<AudioChannels>
+  {(channels, a) => channels
+    .filter(ch => ch.kind === "output" && ch.state === "running")   // whatever is making sound right now
+    .map(ch => (
+      <VolumeSlider label={ch.app ?? ch.description} value={ch.volume} muted={ch.muted}
+                    on_change={v => a.setVolume(ch.id, v)} on_toggle_mute={() => a.toggleMute(ch.id)} />
+    ))}
+</AudioChannels>
+```
+
+Each channel is plain JSON:
+
+| Field         |                                                                          |
+|---------------|--------------------------------------------------------------------------|
+| `id`          | PipeWire node id. What the actions take.                                 |
+| `kind`        | `"output"` (sinks and playback streams) or `"input"` (sources and recording streams). |
+| `type`        | `"device"` or `"stream"` (an application's playback or capture).         |
+| `name`        | PipeWire node name, e.g. `alsa_output.pci-…`.                            |
+| `description` | Human name: the device's description, or the stream's media title.       |
+| `app`, `media`| Streams only: application name and what it is playing. `null` on devices. |
+| `state`       | PipeWire's: `"running"` when audio is flowing, `"suspended"` or `"idle"` when not. |
+| `default`     | `true` on the default sink and the default source.                       |
+| `volume`, `muted` | 0–100 on wpctl's cubic scale, so it matches what `wpctl` prints.     |
+
+Some filters that come up: output devices only, `ch.type === "device" &&
+ch.kind === "output"`; apps currently playing, `ch.type === "stream" &&
+ch.kind === "output" && ch.state === "running"`; the default mic, `ch.default
+&& ch.kind === "input"`. Internal PipeWire plumbing nodes are left out, but
+monitoring tools that open a capture stream (pavucontrol's peak meters, say)
+do show up as recording streams, so filter on `app` if that bothers you.
+
+`actions.setVolume(id, n)` and `actions.toggleMute(id)` return intents. Takes
+`bin` like the other two. The list is re-read every two seconds via
+`pw-dump`, which costs a few tens of milliseconds.
 
 `VolumeSlider` and `VolumeKnob` hold nothing. Props:
 
@@ -100,7 +145,7 @@ the device, the module emits the new state, and the next tick redraws the
 control. Changes made elsewhere (media keys, pavucontrol) show up within two
 seconds the same way.
 
-Both Data components need the module script, `bin/tauler-volume`, on disk.
+All three Data components need the module script, `bin/tauler-volume`, on disk.
 Git-package imports resolve to `index.jsx` only and the package cache path
 includes the commit sha, so the component cannot point at its own copy; put
 it somewhere stable:
@@ -110,7 +155,7 @@ cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/b
 chmod +x ~/.local/bin/tauler-volume
 ```
 
-or pass `bin="/wherever/you/put/it"`. Requires `wpctl` (WirePlumber) and `jq`.
+or pass `bin="/wherever/you/put/it"`. Requires `pw-dump` and `wpctl` (PipeWire and WirePlumber) and `jq`.
 
 ### KittyConfig
 
