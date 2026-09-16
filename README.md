@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { WeatherCard, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { WeatherCard, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -51,6 +51,43 @@ While the first reading is still loading, or if a fetch fails, the card shows
 
 Requires `curl`, and bash at `/usr/bin/bash` (the path is hardcoded in the
 stream command).
+
+### VolumeSlider / VolumeKnob
+
+Two controls over the default PipeWire audio sink: a horizontal slider and a
+rotary knob. Pick one; they show the same number, so using both is mostly a
+demo of two Controls over one value.
+
+```jsx
+<VolumeSlider />
+<VolumeKnob />
+<VolumeSlider label="Speakers" step={2} />
+<VolumeKnob label={null} size={36} />       // knob only, no label row
+```
+
+| Prop    | Default                       |                                                     |
+|---------|-------------------------------|-----------------------------------------------------|
+| `bin`   | `~/.local/bin/tauler-volume`  | Where you put the module script (below).           |
+| `label` | `"Volume"`                    | Label row text. Clicking it toggles mute. `null` hides the row, and the percentage with it. |
+| `step`  | `5`                           | Volume granularity in percent.                     |
+| `size`  | `28`                          | Knob only: diameter in px.                         |
+
+Neither component holds the value. The module owns it: a drag sends an
+intent, `wpctl` changes the sink, the module emits the new volume, and the
+next tick redraws the control — so changes made elsewhere (media keys,
+pavucontrol) show up within two seconds too. Muted draws as 0 without
+touching the stored volume, so unmuting comes back where it was.
+
+Both need the module script, `bin/tauler-volume`, on disk. Git-package imports
+resolve to `index.jsx` only and the package cache path includes the commit
+sha, so the component cannot point at its own copy; put it somewhere stable:
+
+```sh
+cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/bin/
+chmod +x ~/.local/bin/tauler-volume
+```
+
+or pass `bin="/wherever/you/put/it"`. Requires `wpctl` (WirePlumber) and `jq`.
 
 ### KittyConfig
 

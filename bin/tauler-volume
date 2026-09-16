@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Default audio sink volume as a tauler module: reads intents on stdin, writes
+# state on stdout. Backs <VolumeSlider> and <VolumeKnob>; copy it somewhere on
+# disk (the components default to ~/.local/bin/tauler-volume) and make it
+# executable. Requires wpctl (PipeWire/WirePlumber) and jq.
+#
+# Vocabulary (the layout holds nothing, this does):
+#   {"type":"setVolume","volume":N}   N in 0..100
+#   {"type":"toggleMute"}
+# Emits {"volume":N,"muted":bool} on start, after every intent, and every 2s so
+# that changes made elsewhere (pavucontrol, media keys) still show up.
+#
+# One writer only. A background poller would interleave its lines with the
+# reader's, and tauler parses one JSON object per line.
+set -uo pipefail
+
+SINK="@DEFAULT_AUDIO_SINK@"
+
+emit() {
+    local out volume muted
+    out=$(wpctl get-volume "$SINK" 2>/dev/null) || return 0
+    # "Volume: 1.17" or "Volume: 0.40 [MUTED]"
+    volume=$(awk '{printf "%d", $2 * 100 + 0.5}' <<<"$out")
+    muted=false
+    [[ $out == *MUTED* ]] && muted=true
+    printf '{"volume":%s,"muted":%s}\n' "$volume" "$muted"
+}
+
+handle() {
+    local line=$1 type volume
+    type=$(jq -r 'try .type // empty' <<<"$line")
+    case $type in
+    setVolume)
+        volume=$(jq -r 'try .volume // empty' <<<"$line")
+        [[ -n $volume ]] && wpctl set-volume "$SINK" "${volume}%"
+        ;;
+    toggleMute)
+        wpctl set-mute "$SINK" toggle
+        ;;
+    esac
+}
+
+emit
+while :; do
+    IFS= read -r -t 2 line
+    rc=$?
+    if ((rc == 0)); then
+        handle "$line"
+    elif ((rc > 128)); then
+        : # read timed out; fall through and re-emit
+    else
+        # stdin closed — tauler is gone, and looping on EOF would spin a core.
+        exit 0
+    fi
+    emit
+done
