@@ -23,7 +23,7 @@ import {
   Columns,
   Placeholder,
   Children,
-} from './rofi-full-theme.schema.yaml';
+} from '../schemas/rofi-full-theme.schema.yaml';
 import { readRofiColors } from './rofiColors.jsx';
 
 const RofiTheme = ConfigFile({

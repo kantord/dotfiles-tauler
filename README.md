@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { SidebarSection, WeatherCard, OutputVolume, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, SidebarSection, WeatherSummary, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -21,11 +21,129 @@ to your layout file, and re-fetches only when you run `tauler pkg update`.
 No copying files around.
 
 On an older tauler without Packages, copy the file(s) you want into
-`~/.config/tauler/components/` and import them from there instead — every
-component in this repo has no dependency on the others except where noted
-below (the cards all import `SidebarSection`).
+`~/.config/tauler/` (keeping the same subfolder — `data/`, `display/`, ...)
+and import them from there instead. Every file has no dependency on another
+outside its own folder, except where noted below.
 
-## Components
+## Repo layout
+
+One folder per shape a component can have — [tauler's own three
+kinds](https://github.com/kantord/tauler/blob/main/docs/src/content/docs/docs/components.md),
+plus the two things it says have no kind at all:
+
+| Folder     | Kind    | Draws               | Ships here                                      |
+|------------|---------|----------------------|--------------------------------------------------|
+| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`         |
+| `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
+| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx`, `rofiColors.jsx` |
+| `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
+| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`                           |
+
+There is no `controls/` folder and no premade "card" that wires a Data
+component to a Display one — see [Recipes](#recipes) for why. `<Slider>` and
+`<Knob>`, tauler's Control components, are used directly; nothing here wraps
+them.
+
+## Data components
+
+### Volume: `OutputVolume`, `InputVolume`, `AudioChannels`
+
+Three views of the same `tauler-volume` module, over PipeWire. All three read
+the same bin, and tauler identifies a subprocess by its bin, so a layout
+using any mix of them costs one process.
+
+`OutputVolume` and `InputVolume` are the default sink and the default source.
+Each calls its child with `state` and `actions`:
+
+```jsx
+<OutputVolume>
+  {(state, actions) => /* state: { volume, muted } or null; actions: setVolume(n), toggleMute() */ null}
+</OutputVolume>
+```
+
+- `state` is `{ volume, muted }`, or `null` until the module answers and on a
+  machine where that device does not exist (no microphone, say).
+- `actions.setVolume(n)` and `actions.toggleMute()` return intents, so they
+  drop straight into a Control's `on_change` or an `on_click`.
+
+`AudioChannels` is the whole mixer: every PipeWire sink, source, playback
+stream and recording stream, so a layout can filter to whatever it cares
+about and put a control on each.
+
+```jsx
+<AudioChannels>
+  {(channels, actions) => /* channels: [...]; actions: setVolume(id, n), toggleMute(id) */ null}
+</AudioChannels>
+```
+
+Each channel is plain JSON:
+
+| Field             |                                                                          |
+|-------------------|--------------------------------------------------------------------------|
+| `id`              | PipeWire node id. What the actions take.                                 |
+| `kind`             | `"output"` (sinks and playback streams) or `"input"` (sources and recording streams). |
+| `type`             | `"device"` or `"stream"` (an application's playback or capture).         |
+| `name`             | PipeWire node name, e.g. `alsa_output.pci-…`.                            |
+| `description`      | Human name: the device's description, or the stream's media title.       |
+| `app`, `media`     | Streams only: application name and what it is playing. `null` on devices. |
+| `state`            | PipeWire's: `"running"` when audio is flowing, `"suspended"` or `"idle"` when not. |
+| `default`          | `true` on the default sink and the default source.                       |
+| `volume`, `muted`  | 0–100 on wpctl's cubic scale, so it matches what `wpctl` prints.          |
+
+Some filters that come up: output devices only, `ch.type === "device" &&
+ch.kind === "output"`; apps currently playing, `ch.type === "stream" &&
+ch.kind === "output" && ch.state === "running"`; the default mic, `ch.default
+&& ch.kind === "input"`. Internal PipeWire plumbing nodes are left out, but
+monitoring tools that open a capture stream (pavucontrol's peak meters, say)
+do show up as recording streams, so filter on `app` if that bothers you.
+
+All three take `bin` (default `~/.local/bin/tauler-volume`), where you put
+the module script (below). The list in `AudioChannels` is re-read every two
+seconds via `pw-dump`, which costs a few tens of milliseconds.
+
+The round trip is the whole design: a drag sends an intent, `wpctl` changes
+the device, the module emits the new state, and the next tick redraws
+whatever control you put on it. Changes made elsewhere (media keys,
+pavucontrol) show up within two seconds the same way.
+
+The module script needs to be on disk. Git-package imports resolve to
+`index.jsx` only and the package cache path includes the commit sha, so the
+component cannot point at its own copy; put it somewhere stable:
+
+```sh
+cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/bin/
+chmod +x ~/.local/bin/tauler-volume
+```
+
+or pass `bin="/wherever/you/put/it"`. Requires `pw-dump`, `wpctl` (PipeWire
+and WirePlumber) and `jq`.
+
+### Weather: `Weather`
+
+Current conditions from [wttr.in](https://wttr.in), as a plain object — pair
+it with `WeatherSummary` (below) or your own display.
+
+```jsx
+<Weather location="Barcelona">
+  {w => /* w: { cond, temp, feels, humidity, uv } or null */ null}
+</Weather>
+```
+
+`location` is whatever wttr.in accepts: a city name, an airport code, a
+`~Landmark Name`. Leave it out and wttr.in picks a location from your IP,
+which is usually what you want on a laptop. `refreshSeconds` defaults to
+180.
+
+Both props are part of the command tauler runs, and that command is how
+tauler identifies the stream, so changing either one at runtime kills the
+subprocess and starts a new one — set them once in your layout.
+
+`w` is `null` before the first reading lands. A failed curl still prints a
+complete record, only with every field blank — `WeatherSummary` treats those
+the same way. Requires `curl`, and bash at `/usr/bin/bash` (the path is
+hardcoded in the stream command).
+
+## Display components
 
 ### SidebarSection
 
@@ -46,135 +164,62 @@ its divider disappears along with it. The divider is a neutral grey at low
 alpha rather than a theme token, so it reads the same on light and dark
 themes.
 
-### WeatherCard
+### WeatherSummary
 
-Current conditions from [wttr.in](https://wttr.in): temperature, feels-like, a
-condition icon, relative humidity and the UV index.
+Renders one `Weather` reading: temperature, feels-like, a condition icon,
+humidity and the UV index. Takes `cond`, `temp`, `feels`, `humidity`, `uv` —
+spread a `Weather` reading straight in.
 
 ```jsx
-<WeatherCard />                                   // geolocates by IP
-<WeatherCard location="Barcelona" />
-<WeatherCard location="BCN" refreshSeconds={600} />
+<Weather location="Barcelona">{w => <WeatherSummary {...w} />}</Weather>
 ```
 
-`location` is whatever wttr.in accepts, so a city name, an airport code or a
-`~Landmark Name` all work. Leave it out and wttr.in picks a location from your
-IP, which is usually what you want on a laptop.
+While the first reading is still loading, or if a fetch fails, shows `…` and
+`—` instead of empty fields.
 
-Set both props once in your layout. They are part of the command tauler runs,
-and that command is how tauler identifies the stream, so changing them at
-runtime kills the subprocess and starts a new one.
+## Recipes
 
-While the first reading is still loading, or if a fetch fails, the card shows
-`…` and `—` instead of empty fields.
-
-Requires `curl`, and bash at `/usr/bin/bash` (the path is hardcoded in the
-stream command).
-
-### OutputVolume / InputVolume + VolumeSlider / VolumeKnob
-
-Volume, split the way [tauler's component kinds](https://github.com/kantord/tauler/blob/main/docs/src/content/docs/docs/components.md)
-split things: two **Data** components that own the number, and two
-**Controls** that draw it. Any control composes with either source.
+There is no `VolumeSlider`, no `VolumeKnob`, no `WeatherCard`. A Data
+component and a Control already compose in one line, and the line says
+everything a wrapper would otherwise hide — the label text, that a muted
+channel draws as 0, the step size. So the "card" layer is a few lines you
+write in your own layout, not an export from this package:
 
 ```jsx
-import { OutputVolume, InputVolume, VolumeSlider, VolumeKnob } from "@gh/kantord/dotfiles-tauler";
+import { Slider } from "@ui/slider";
+import { OutputVolume, AudioChannels } from "@gh/kantord/dotfiles-tauler";
 
+// Main output, with a label row.
 <OutputVolume>
-  {(v, a) => <VolumeSlider label="Speakers" value={v?.volume} muted={v?.muted}
-                           on_change={a.setVolume} on_toggle_mute={a.toggleMute} />}
+  {(v, a) => (
+    <div class="flex flex-col gap-[6px] w-full">
+      <div class="flex flex-row items-baseline justify-between w-full">
+        <div on_click={[a.toggleMute()]}>
+          <span class="text-[10px] text-muted-foreground">{v?.muted ? "Volume · muted" : "Volume"}</span>
+        </div>
+        <span class="text-[10px] text-muted-foreground">{v?.volume ?? 0}%</span>
+      </div>
+      <Slider value={v?.muted ? 0 : v?.volume ?? 0} min={0} max={100} step={5} on_change={a.setVolume} />
+    </div>
+  )}
 </OutputVolume>
 
-<InputVolume>
-  {(v, a) => <VolumeKnob label="Mic" value={v?.volume} muted={v?.muted}
-                         on_change={a.setVolume} on_toggle_mute={a.toggleMute} />}
-</InputVolume>
-```
-
-`OutputVolume` is the default PipeWire sink, `InputVolume` the default source.
-Each calls its child with `state` and `actions`:
-
-- `state` is `{ volume, muted }`, or `null` until the module answers and on a
-  machine where that device does not exist (no microphone, say). Render
-  nothing in that case if you prefer: `{(v, a) => v && <VolumeSlider ... />}`.
-- `actions.setVolume(n)` and `actions.toggleMute()` return intents, so they go
-  straight into an `on_change` or an `on_click`.
-- Both take `bin` (default `~/.local/bin/tauler-volume`), where you put the
-  module script. Every volume Data component reads the same bin, so using
-  several costs one subprocess.
-
-### AudioChannels
-
-The whole mixer as data: every PipeWire sink, source, playback stream and
-recording stream, so a layout can filter down to whatever it cares about
-and put a control on each.
-
-```jsx
-import { AudioChannels, VolumeSlider } from "@gh/kantord/dotfiles-tauler";
-
+// One slider per app that is playing right now, no label row.
 <AudioChannels>
   {(channels, a) => channels
-    .filter(ch => ch.kind === "output" && ch.state === "running")   // whatever is making sound right now
+    .filter(ch => ch.type === "stream" && ch.kind === "output" && ch.state === "running")
     .map(ch => (
-      <VolumeSlider label={ch.app ?? ch.description} value={ch.volume} muted={ch.muted}
-                    on_change={v => a.setVolume(ch.id, v)} on_toggle_mute={() => a.toggleMute(ch.id)} />
+      <Slider value={ch.muted ? 0 : ch.volume} min={0} max={100} step={5}
+              on_change={v => a.setVolume(ch.id, v)} />
     ))}
 </AudioChannels>
 ```
 
-Each channel is plain JSON:
+Swap `<Slider>` for `<Knob>` and it is a dial instead — both are tauler's own
+Control components, imported from `@ui/slider` / `@ui/knob`, not from this
+package.
 
-| Field         |                                                                          |
-|---------------|--------------------------------------------------------------------------|
-| `id`          | PipeWire node id. What the actions take.                                 |
-| `kind`        | `"output"` (sinks and playback streams) or `"input"` (sources and recording streams). |
-| `type`        | `"device"` or `"stream"` (an application's playback or capture).         |
-| `name`        | PipeWire node name, e.g. `alsa_output.pci-…`.                            |
-| `description` | Human name: the device's description, or the stream's media title.       |
-| `app`, `media`| Streams only: application name and what it is playing. `null` on devices. |
-| `state`       | PipeWire's: `"running"` when audio is flowing, `"suspended"` or `"idle"` when not. |
-| `default`     | `true` on the default sink and the default source.                       |
-| `volume`, `muted` | 0–100 on wpctl's cubic scale, so it matches what `wpctl` prints.     |
-
-Some filters that come up: output devices only, `ch.type === "device" &&
-ch.kind === "output"`; apps currently playing, `ch.type === "stream" &&
-ch.kind === "output" && ch.state === "running"`; the default mic, `ch.default
-&& ch.kind === "input"`. Internal PipeWire plumbing nodes are left out, but
-monitoring tools that open a capture stream (pavucontrol's peak meters, say)
-do show up as recording streams, so filter on `app` if that bothers you.
-
-`actions.setVolume(id, n)` and `actions.toggleMute(id)` return intents. Takes
-`bin` like the other two. The list is re-read every two seconds via
-`pw-dump`, which costs a few tens of milliseconds.
-
-`VolumeSlider` and `VolumeKnob` hold nothing. Props:
-
-| Prop             |              |                                                                    |
-|------------------|--------------|--------------------------------------------------------------------|
-| `value`          |              | 0–100. `undefined` draws as 0.                                     |
-| `muted`          | `false`      | Draws as 0 without touching `value`, so unmuting comes back where it was. |
-| `on_change`      |              | Gets the new 0–100 value, returns intents.                         |
-| `on_toggle_mute` |              | Optional. When given, clicking the label toggles mute.             |
-| `label`          | `"Volume"`   | Label row text. `null` hides the row, and the percentage with it.  |
-| `step`           | `5`          | Granularity in percent.                                            |
-| `size`           | `28`         | Knob only: diameter in px.                                         |
-
-The round trip is the whole design: a drag sends an intent, `wpctl` changes
-the device, the module emits the new state, and the next tick redraws the
-control. Changes made elsewhere (media keys, pavucontrol) show up within two
-seconds the same way.
-
-All three Data components need the module script, `bin/tauler-volume`, on disk.
-Git-package imports resolve to `index.jsx` only and the package cache path
-includes the commit sha, so the component cannot point at its own copy; put
-it somewhere stable:
-
-```sh
-cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/bin/
-chmod +x ~/.local/bin/tauler-volume
-```
-
-or pass `bin="/wherever/you/put/it"`. Requires `pw-dump` and `wpctl` (PipeWire and WirePlumber) and `jq`.
+## Units
 
 ### KittyConfig
 
@@ -231,10 +276,10 @@ Requires rofi.
 
 ## Schemas
 
-Schema files (`components/*.schema.yaml`) are importable straight from a
+Schema files (`schemas/*.schema.yaml`) are importable straight from a
 layout on tauler builds with `tauler-configgen`: each one declares JSX
 components for one config format plus the template that renders them. The
-kitty and rofi schemas above back their components; the i3 schema below
+kitty and rofi schemas above back the Units above; the i3 schema below
 ships on its own, without a deployed component, because an i3 config is too
 personal to be shipped as one.
 
@@ -254,7 +299,7 @@ class (`ClientColor`, `BarColor`) take `class`. `exec_always` is
 written bare everywhere (`outputs={["Dell UP2414Q"]}`); the template adds
 the quotes i3 needs.
 
-Copy `components/i3-config.schema.yaml` next to your layout (git-package
+Copy `schemas/i3-config.schema.yaml` next to your layout (git-package
 imports resolve to `index.jsx` only, and a schema has to be imported by
 its own path):
 

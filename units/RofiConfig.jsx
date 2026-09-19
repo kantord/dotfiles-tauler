@@ -16,7 +16,7 @@ import {
   DisplayWindow,
   DisplayCombi,
   ClickToExit,
-} from './rofi-config.schema.yaml';
+} from '../schemas/rofi-config.schema.yaml';
 
 // Ported from the hand-written ~/.config/rofi/config.rasi — rofi's behavior
 // (modes, matching, terminal, display formats), not styling, so no colors

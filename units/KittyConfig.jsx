@@ -19,7 +19,7 @@ import {
   RepaintDelay,
   InputDelay,
   AllowRemoteControl,
-} from './kitty-config.schema.yaml';
+} from '../schemas/kitty-config.schema.yaml';
 
 // Ported from the hand-written ~/.config/kitty/kitty.conf's static settings
 // (everything except the `kitten themes`-managed BEGIN_KITTY_THEME block).

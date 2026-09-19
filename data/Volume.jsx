@@ -2,8 +2,10 @@
 // over the `tauler-volume` module. All three read the same bin, and tauler
 // identifies a subprocess by its bin, so a layout using any mix gets one process.
 //
-//   <OutputVolume>{(state, actions) => <VolumeSlider value={state?.volume} ... />}</OutputVolume>
+//   <OutputVolume>{(state, actions) => <Slider value={state?.volume ?? 0} on_change={actions.setVolume} />}</OutputVolume>
 //   <AudioChannels>{(channels, actions) => channels.filter(...).map(ch => ...)}</AudioChannels>
+//
+// See the README's Recipes section for pairing either with a Control.
 //
 // For OutputVolume/InputVolume, `state` is `{ volume, muted }`, or `null` while
 // the module has not answered yet or the device does not exist (a machine with
