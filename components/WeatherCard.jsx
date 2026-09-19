@@ -1,3 +1,4 @@
+import SidebarSection from './SidebarSection.jsx';
 import { Icon } from '@ui/icon';
 
 function conditionIcon(cond) {
@@ -58,22 +59,19 @@ export default function WeatherCard({ location = '', refreshSeconds = 180 }) {
   const humidity = w?.humidity || "—";
   // THEME-GAP: UV colors in inline style (semantic — low/moderate/high/extreme scale, no token equivalent)
   return (
-    <div class="flex flex-col w-full">
-      <div class="py-[4px] w-full"><div class="h-px w-full" style={{backgroundColor: "rgba(255,255,255,0.08)"}} /></div>
-    <div class="flex flex-col gap-[4px] px-3 py-[8px]">
-      <div class="flex flex-row items-baseline justify-between">
-        <span class="text-[15px] text-foreground font-bold">{temp}</span>
-        <span class="text-[10px] text-muted-foreground">feels {feels}</span>
-      </div>
-      <div class="flex flex-row justify-between items-center">
-        <Icon name={conditionIcon(w?.cond)} class="text-[14px] text-muted-foreground" />
-        <span class="text-[10px] text-muted-foreground">RH {humidity}</span>
-      </div>
-      <div class="flex flex-row justify-between">
-        <span class="text-[10px]" style={{ color: uvColor(w?.uv) }}>UV {uvLabel(w?.uv)}</span>
-        <div />
-      </div>
+    <SidebarSection>
+    <div class="flex flex-row items-baseline justify-between">
+      <span class="text-[15px] text-foreground font-bold">{temp}</span>
+      <span class="text-[10px] text-muted-foreground">feels {feels}</span>
     </div>
+    <div class="flex flex-row justify-between items-center">
+      <Icon name={conditionIcon(w?.cond)} class="text-[14px] text-muted-foreground" />
+      <span class="text-[10px] text-muted-foreground">RH {humidity}</span>
     </div>
+    <div class="flex flex-row justify-between">
+      <span class="text-[10px]" style={{ color: uvColor(w?.uv) }}>UV {uvLabel(w?.uv)}</span>
+      <div />
+    </div>
+    </SidebarSection>
   );
 }

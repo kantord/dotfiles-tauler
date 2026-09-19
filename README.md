@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { WeatherCard, OutputVolume, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { SidebarSection, WeatherCard, OutputVolume, VolumeSlider, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -23,9 +23,28 @@ No copying files around.
 On an older tauler without Packages, copy the file(s) you want into
 `~/.config/tauler/components/` and import them from there instead — every
 component in this repo has no dependency on the others except where noted
-below.
+below (the cards all import `SidebarSection`).
 
 ## Components
+
+### SidebarSection
+
+The shell every card in this repo draws: a hairline divider, then a padded
+column. Wrap your own cards in it so a sidebar of mixed cards lines up.
+
+```jsx
+<SidebarSection>
+  <span class="text-[10px] text-muted-foreground">DISK</span>
+  <Progress value={used} />
+</SidebarSection>
+<SidebarSection gap={10}>…</SidebarSection>          // wider row gap, in px
+<SidebarSection class="flex-row">…</SidebarSection>  // a row instead of a column
+```
+
+A card with nothing to show should return `null` before rendering one, so
+its divider disappears along with it. The divider is a neutral grey at low
+alpha rather than a theme token, so it reads the same on light and dark
+themes.
 
 ### WeatherCard
 
