@@ -11,6 +11,7 @@ export { default as SidebarSection } from './display/SidebarSection.jsx';
 export { default as WeatherSummary } from './display/WeatherSummary.jsx';
 
 export { default as KittyConfig } from './units/KittyConfig.jsx';
+export { default as KittyTheme } from './units/KittyTheme.jsx';
 export { default as RofiConfig } from './units/RofiConfig.jsx';
 export { default as RofiTheme } from './units/RofiTheme.jsx';
 export { default as RecentFilesTheme } from './units/RecentFilesTheme.jsx';
