@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, SidebarSection, WeatherSummary, KittyConfig, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, SidebarSection, WeatherSummary, KittyConfig, KittyTheme, I3Theme, GtkTheme, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -35,7 +35,7 @@ plus the two things it says have no kind at all:
 |------------|---------|----------------------|--------------------------------------------------|
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`         |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
-| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx`, `rofiColors.jsx` |
+| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx`, `rofiColors.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
 | `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`                           |
 
@@ -239,6 +239,27 @@ your kitty config (most commonly `kitten themes`, which rewrites the color
 block on every theme switch) is never fought over.
 
 Requires kitty.
+
+### KittyTheme, I3Theme, GtkTheme
+
+Three Units that hand tauler's active theme to other programs. Each renders from `ctx.theme` (the
+theme chosen by `theme:` in the layout's frontmatter), so changing the theme rewrites all three
+and the programs follow — no sync script, no second palette to keep.
+
+```jsx
+<KittyTheme />
+<I3Theme />
+<GtkTheme />
+```
+
+| Unit         | Writes                                  | Notes |
+| ------------ | --------------------------------------- | ----- |
+| `KittyTheme` | `~/.config/kitty/tauler-kitty-theme.conf` | Foreground, background, selection, cursor, borders, tabs and the 16 ANSI colours. `include` it from `kitty.conf` instead of a `kitten themes` block; running windows reload it with `auto_reload_config`. |
+| `I3Theme`    | `~/.config/i3/tauler-theme.conf`        | Window borders and title bars (`client.*`). `include` it from the i3 config. Each write runs `i3-msg reload`. |
+| `GtkTheme`   | `~/.config/gtk-4.0/gtk.css`             | libadwaita's named colours: GTK4 apps (Nautilus and so on) recolour; running ones on their next launch. The unit owns the whole file. |
+
+Which token paints which surface follows the names a UI uses — `primary` for the focused window and
+the accent, `card` for content, `sidebar` for header bars, `popover` for dialogs.
 
 ### RofiConfig
 

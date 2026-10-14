@@ -42,11 +42,11 @@ function uvLabel(raw) {
 // THEME-GAP: semantic low/moderate/high/extreme scale, no theme token equivalent
 function uvColor(raw) {
   const n = parseInt(raw, 10);
-  if (isNaN(n)) return "rgba(255,255,255,0.5)";
-  if (n <= 2) return "#a6e3a1";
-  if (n <= 5) return "#f9e2af";
-  if (n <= 7) return "#fab387";
-  return "#f38ba8";
+  if (isNaN(n)) return ctx.theme.colors['muted-foreground'];
+  if (n <= 2) return ctx.theme.colors['ansi-green'];
+  if (n <= 5) return ctx.theme.colors['ansi-yellow'];
+  if (n <= 7) return ctx.theme.colors['ansi-bright-red'];
+  return ctx.theme.colors['ansi-red'];
 }
 
 export default function WeatherSummary({ cond, temp, feels, humidity, uv }) {
