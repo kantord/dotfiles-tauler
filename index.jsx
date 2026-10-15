@@ -10,6 +10,9 @@ export { default as Weather } from './data/Weather.jsx';
 export { default as SidebarSection } from './display/SidebarSection.jsx';
 export { default as WeatherSummary } from './display/WeatherSummary.jsx';
 
+export { default as Chart } from './charts/Chart.jsx';
+export { rect, rule } from './charts/marks.jsx';
+
 export { default as KittyConfig } from './units/KittyConfig.jsx';
 export { default as KittyTheme } from './units/KittyTheme.jsx';
 export { default as I3Theme } from './units/I3Theme.jsx';

@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, SidebarSection, WeatherSummary, KittyConfig, KittyTheme, I3Theme, GtkTheme, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -35,6 +35,7 @@ plus the two things it says have no kind at all:
 |------------|---------|----------------------|--------------------------------------------------|
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`         |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
+| `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx`, `rofiColors.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
 | `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`                           |
@@ -176,6 +177,42 @@ spread a `Weather` reading straight in.
 
 While the first reading is still loading, or if a fetch fails, shows `…` and
 `—` instead of empty fields.
+
+## Charts
+
+A small grammar-of-graphics `<Chart>`, shaped after
+[TanStack Charts](https://tanstack.com/charts) (marks take their own data;
+channels are field names or accessors; scales carry their guides; marks draw
+in array order). Only the cut a vertical strip needs: one fixed linear `y`
+scale, `rect` and `rule` marks, and a renderer that draws them as flex rows.
+`compile.jsx` turns a spec into a renderer-neutral scene; `Chart.jsx` is the
+only part that knows about tauler.
+
+```jsx
+import { Chart, rect, rule } from "@gh/kantord/dotfiles-tauler";
+
+<Chart
+  scales={{ y: { domain: [360, 1320], ticks: [
+    { every: 60, overSpans: true, alpha: 0.18, label: v => v / 60 },
+    { every: 30, width: "30%", alpha: 0.08 },
+    { every: 15, width: "15%", alpha: 0.15, dotted: true },
+  ] } }}
+  marks={[
+    rect(events, { y1: "start", y2: d => d.end, fill: "color", label: "title" }),
+    rule([845], { y: d => d, label: () => "14:05" }, { stroke: "#ef4444" }),
+  ]}
+/>
+```
+
+- `rect(data, { y1, y2, fill, label })` — a block between two `y` values.
+- `rule(data, { y, label }, { stroke })` — a line at one `y` value.
+- A channel is a field name (`"start"`) or an accessor `(datum, index) => value`.
+  Constants (`stroke`) are the third argument and stay out of the channels.
+- `ticks` are guides of the scale, coarsest first; a value gets the first tick
+  whose `every` divides it. `overSpans` lets it cross a rect; `label(v)`
+  writes text beside it.
+- Values are plain numbers in the scale's units. Turning "09:30" into minutes
+  is the caller's job; nothing here knows about time.
 
 ## Recipes
 
