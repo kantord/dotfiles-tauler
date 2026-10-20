@@ -36,7 +36,7 @@ plus the two things it says have no kind at all:
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`         |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
-| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx`, `rofiColors.jsx` |
+| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
 | `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`                           |
 
@@ -133,7 +133,7 @@ it with `WeatherSummary` (below) or your own display.
 `location` is whatever wttr.in accepts: a city name, an airport code, a
 `~Landmark Name`. Leave it out and wttr.in picks a location from your IP,
 which is usually what you want on a laptop. `refreshSeconds` defaults to
-180.
+180, with a floor of 10.
 
 Both props are part of the command tauler runs, and that command is how
 tauler identifies the stream, so changing either one at runtime kills the
@@ -141,7 +141,7 @@ subprocess and starts a new one — set them once in your layout.
 
 `w` is `null` before the first reading lands. A failed curl still prints a
 complete record, only with every field blank — `WeatherSummary` treats those
-the same way. Requires `curl`, and bash at `/usr/bin/bash` (the path is
+the same way. Requires `curl`, `jq`, and bash at `/usr/bin/bash` (the path is
 hardcoded in the stream command).
 
 ## Display components
@@ -275,6 +275,10 @@ rather than being replaced by it, so anything else that also manages part of
 your kitty config (most commonly `kitten themes`, which rewrites the color
 block on every theme switch) is never fought over.
 
+It sets no `shell`: a missing shell program stops kitty from opening a
+window at all, so that line belongs in your own `kitty.conf`, after the
+`include` (a later value wins).
+
 Requires kitty.
 
 ### KittyTheme, I3Theme, GtkTheme
@@ -322,13 +326,10 @@ recent-files picker). Both take no props.
 <RecentFilesTheme />
 ```
 
-Both read colors from `~/.config/tauler/rofi-colors.json` (seven keys: `bg`,
-`fg`, `panel`, `bg-alt`, `bg-alt-fg`, `accent`, `urgent` — hex strings) if that
-file exists, falling back to a fixed built-in palette otherwise — so they
-render correctly with zero extra setup, and pick up your own colors
-automatically if you write that file yourself (from a terminal theme sync
-script, say). The file is read fresh every render, no restart needed to see a
-color change take effect.
+Both render from `ctx.theme`, like `KittyTheme` and `I3Theme`: the window is
+`popover`, the input bar and rows sit on `background`, the selection and accent
+are `primary`, errors are `destructive`. Changing the layout's theme rewrites
+both files; rofi picks them up on its next launch.
 
 Requires rofi.
 

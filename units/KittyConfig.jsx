@@ -11,7 +11,6 @@ import {
   ScrollbackLines,
   EnableAudioBell,
   ShellIntegration,
-  Shell,
   RememberWindowSize,
   InitialWindowWidth,
   InitialWindowHeight,
@@ -52,10 +51,9 @@ const KittyConfig = ConfigFile({
       <ScrollbackLines value="10000" />
       <EnableAudioBell value="no" />
       <ShellIntegration value="enabled" />
-      {/* Open every window inside the active enwiro environment; waits with
-          a spinner while the environment is cooking, plain zsh when there
-          is none. */}
-      <Shell value="~/.cargo/bin/enw shell" />
+      {/* No `shell` here: it is the one setting that breaks kitty outright
+          when the program is missing. Set it in your own kitty.conf, after
+          the `include`. */}
       <RememberWindowSize value="no" />
       <InitialWindowWidth value="830" />
       <InitialWindowHeight value="700" />
