@@ -18,6 +18,7 @@ export { default as KittyTheme } from './units/KittyTheme.jsx';
 export { default as I3Theme } from './units/I3Theme.jsx';
 export { default as GtkTheme } from './units/GtkTheme.jsx';
 export { default as ColorScheme } from './units/ColorScheme.jsx';
+export { default as Gtk3Css } from './units/Gtk3Css.jsx';
 export { default as RofiConfig } from './units/RofiConfig.jsx';
 export { default as RofiTheme } from './units/RofiTheme.jsx';
 export { default as RecentFilesTheme } from './units/RecentFilesTheme.jsx';

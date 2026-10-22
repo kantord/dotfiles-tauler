@@ -11,8 +11,38 @@ import { GtkCss, DefineColor } from '../schemas/gtk-css.schema.yaml';
 // Whether libadwaita draws light or dark chrome around those colours is not set here: it comes from
 // the desktop's colour-scheme setting, so a light theme wants a light preference.
 //
+// After the colours come a few rules for a window manager without a compositor (bare i3): there,
+// the room GTK reserves for soft shadows paints as dark strips and gaps around windows, menus and
+// popovers, so shadows are switched off and the room they reserve is removed. With a compositor
+// they only cost GTK's shadows.
+//
+// GTK reads `gtk.css` only when an app starts, so a running app keeps its old colours. Nautilus
+// is the one that stays alive with no window open (`--gapplication-service`), so the next window
+// would still show the old palette: after a write, `apply` quits that service, but only while it
+// has no window — nothing visible closes. While a window is open it fails on purpose, and
+// ConfigFile retries it each Sweep until the last window is closed. Off X11 (no `xprop`) it
+// does nothing.
+//
 // This is the whole of `gtk.css` — the unit owns the file.
 const SHADE = 'rgba(0, 0, 0, 0.25)';
+
+const NO_COMPOSITOR = `
+* { box-shadow: none; }
+
+menu, menu.background,
+popover, popover.background,
+tooltip, tooltip.background,
+popover > contents, popover > box,
+menu > box, tooltip > contents {
+  margin: 0;
+  border: 0;
+  outline: none;
+  border-image: none;
+  background-clip: border-box;
+}
+
+popover > arrow, popover .arrow { opacity: 0; min-width: 0; min-height: 0; margin: 0; padding: 0; }
+`;
 
 const GtkTheme = ConfigFile({
   path: '~/.config/gtk-4.0/gtk.css',
@@ -58,14 +88,23 @@ const GtkTheme = ConfigFile({
       shade_color: SHADE,
       scrollbar_outline_color: c.border,
     };
-    return (
+    const palette = (
       <GtkCss>
         {Object.entries(colors).map(([name, value]) => (
           <DefineColor name={name} value={value} />
         ))}
       </GtkCss>
     );
+    return palette + NO_COMPOSITOR;
   },
+  apply: () => sh`
+    pgrep -x nautilus >/dev/null || exit 0
+    clients=$(xprop -root _NET_CLIENT_LIST 2>/dev/null) || exit 0
+    for w in $(printf '%s' "$clients" | grep -o '0x[0-9a-f]*'); do
+      xprop -id "$w" WM_CLASS 2>/dev/null | grep -q '"org.gnome.Nautilus"' && exit 1
+    done
+    nautilus -q
+  `,
 });
 
 export default GtkTheme;
