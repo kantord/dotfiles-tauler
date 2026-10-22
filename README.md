@@ -214,6 +214,9 @@ import { Chart, rect, rule } from "@gh/kantord/dotfiles-tauler";
 - Values are plain numbers in the scale's units. Turning "09:30" into minutes
   is the caller's job; nothing here knows about time.
 
+Tick lines and labels are the theme's `foreground`, via tauler's `themeColor`
+global: needs tauler 0.6.3 or later.
+
 ## Recipes
 
 There is no `VolumeSlider`, no `VolumeKnob`, no `WeatherCard`. A Data

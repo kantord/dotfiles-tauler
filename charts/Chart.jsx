@@ -24,12 +24,6 @@ import { compile } from "./compile.jsx";
 // row whose flex-grow is its length, so layers combine inside a segment.
 const RULE_MIN_HEIGHT = "18px"; // a rule's segment can be a couple of px: too short for its label
 
-function tint(alpha) {
-  const hex = ctx.theme.colors.foreground;
-  const a = Math.round(Math.min(Math.max(alpha, 0), 1) * 255);
-  return a === 255 ? hex : hex + a.toString(16).padStart(2, "0");
-}
-
 // Array.prototype.findLast, spelled out: not every JS engine tauler might run on has it.
 function last(items, test) {
   for (let i = items.length - 1; i >= 0; i--) if (test(items[i])) return items[i];
@@ -89,7 +83,7 @@ export default function Chart({ marks, scales }) {
           style.minHeight = RULE_MIN_HEIGHT;
         } else if (drawTick) {
           style.width = tick.width ?? "100%";
-          style.borderTop = `1px ${tick.dotted ? "dotted" : "solid"} ${tint(tick.alpha ?? 0.15)}`;
+          style.borderTop = `1px ${tick.dotted ? "dotted" : "solid"} ${themeColor("foreground", tick.alpha ?? 0.15)}`;
         }
 
         const tickLabel = drawTick && !rule && tick.label ? tick.label(seg.start) : null;
@@ -101,7 +95,7 @@ export default function Chart({ marks, scales }) {
               </span>
             )}
             {!rect && tickLabel != null && (
-              <span class="text-[9px] leading-none" style={{ color: tint(1), paddingTop: 3, paddingLeft: 3 }}>
+              <span class="text-[9px] leading-none" style={{ color: themeColor("foreground"), paddingTop: 3, paddingLeft: 3 }}>
                 {tickLabel}
               </span>
             )}
