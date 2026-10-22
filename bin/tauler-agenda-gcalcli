@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# One day of Google Calendar events as a stream, for the Agenda data component (data/Agenda.jsx).
+#
+# Usage: tauler-agenda-gcalcli [DAY]
+#   DAY is an offset from today: 0 (the default) is today, 1 tomorrow, -1 yesterday.
+#
+# Prints one JSON line on start and every 5 minutes after:
+#   [{"title":"Standup","start":"09:30","end":"09:45","color":"#818cf8"}, ...]
+# Timed events only (all-day ones have no start time), sorted by start. Colours are handed out
+# in turn from a fixed list; gcalcli does not report a calendar's own colour in its TSV.
+#
+# Requires gcalcli, already logged in (`gcalcli init`), and jq. On a failed fetch it prints [] and
+# lets gcalcli's error through to stderr, which tauler writes to its log: an expired Google login
+# shows up there as `invalid_grant`.
+set -u
+offset=${1:-0}
+case "$offset" in
+  ''|*[!0-9-]*|-|*?-*) echo "tauler-agenda-gcalcli: DAY must be an integer, got '$offset'" >&2; exit 2 ;;
+esac
+
+REFRESH_SECONDS=300
+target=$(date -d "today ${offset} days" +%F)
+next=$(date -d "$target +1 day" +%F)
+
+while true; do
+  gcalcli agenda --tsv --details all "$target" "$next" \
+    | jq -R -s -c --arg day "$target" '
+        (["#818cf8","#f472b6","#34d399","#fbbf24","#38bdf8","#fb7185","#a78bfa"]) as $colors
+        | split("\n") | map(select(length > 0))
+        | (.[0] | split("\t")) as $h
+        | .[1:] | map(split("\t") | . as $r
+            | reduce range(0; $h | length) as $i ({}; .[$h[$i]] = $r[$i]))
+        | map(select(.start_time != "" and .start_date == $day))
+        | sort_by(.start_time)
+        | to_entries
+        | map({title: .value.title, start: .value.start_time, end: .value.end_time, color: $colors[.key % ($colors | length)]})
+      ' 2>/dev/null || echo '[]'
+  sleep "$REFRESH_SECONDS"
+done

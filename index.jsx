@@ -10,6 +10,7 @@ export { default as Clock } from './data/Clock.jsx';
 export { default as Battery } from './data/Battery.jsx';
 export { default as Notifications } from './data/Notifications.jsx';
 export { default as ClaudeUsage } from './data/ClaudeUsage.jsx';
+export { default as Agenda } from './data/Agenda.jsx';
 
 export { default as SidebarSection } from './display/SidebarSection.jsx';
 export { default as WeatherSummary } from './display/WeatherSummary.jsx';

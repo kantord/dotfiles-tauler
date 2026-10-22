@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -33,12 +33,12 @@ plus the two things it says have no kind at all:
 
 | Folder     | Kind    | Draws               | Ships here                                      |
 |------------|---------|----------------------|--------------------------------------------------|
-| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx` |
+| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
-| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline` |
+| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline`, `tauler-agenda-gcalcli` |
 
 There is no `controls/` folder and no premade "card" that wires a Data
 component to a Display one — see [Recipes](#recipes) for why. `<Slider>` and
@@ -209,6 +209,33 @@ at the first:
 `tauler-claude-statusline` records each session's numbers in
 `/tmp/claude-usage` and prints a short `5h:NN%` status line;
 `tauler-claude-usage` (the `bin` prop) reads them back. Requires `jq`.
+
+### Agenda: `Agenda`
+
+One day of calendar events, for a timeline (`Chart` with `rect` marks) or a
+list.
+
+```jsx
+<Agenda day={0}>
+  {(events, info) => events.map(e => <span>{e.start}–{e.end} {e.title}</span>)}
+</Agenda>
+```
+
+`events` is `[{ title, start, end, color }]` with `"HH:MM"` times, sorted by
+start, and empty until the first fetch. `info` is `{ day, date, month,
+dayOfMonth, isToday }` for the day shown.
+
+`day` is an offset from today: 0 today, 1 tomorrow, -1 yesterday. It is part
+of the command, so changing it restarts the source with one fresh fetch,
+which is what you want for stepping through days.
+
+`bin` is the source, defaulting to `~/.local/bin/tauler-agenda-gcalcli` (copy
+it from `bin/`). It reads Google Calendar through
+[gcalcli](https://github.com/insanum/gcalcli), refreshing every 5 minutes.
+Any program that takes the day offset as its first argument and prints those
+JSON lines works as a source. Requires gcalcli, logged in with `gcalcli init`,
+and `jq`. If the login expires, the events go empty and gcalcli's
+`invalid_grant` error shows up in tauler's log.
 
 ## Display components
 
