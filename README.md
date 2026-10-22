@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -33,12 +33,12 @@ plus the two things it says have no kind at all:
 
 | Folder     | Kind    | Draws               | Ships here                                      |
 |------------|---------|----------------------|--------------------------------------------------|
-| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`         |
+| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
-| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`                           |
+| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline` |
 
 There is no `controls/` folder and no premade "card" that wires a Data
 component to a Display one — see [Recipes](#recipes) for why. `<Slider>` and
@@ -143,6 +143,72 @@ subprocess and starts a new one — set them once in your layout.
 complete record, only with every field blank — `WeatherSummary` treats those
 the same way. Requires `curl`, `jq`, and bash at `/usr/bin/bash` (the path is
 hardcoded in the stream command).
+
+### Clock: `Clock`
+
+The current time as a string, from `date`.
+
+```jsx
+<Clock>{t => <span>{t}</span>}</Clock>
+<Clock format="%a %d %b" refreshSeconds={60}>{d => <span>{d}</span>}</Clock>
+```
+
+`format` is a `date +FORMAT` string (default `%H:%M`); `refreshSeconds`
+defaults to 1. The child gets `null` before the first line. Like `Weather`'s
+props, both are part of the stream's command, so set them once.
+
+### Battery: `Battery`
+
+A laptop battery's charge, from `/sys/class/power_supply`.
+
+```jsx
+<Battery>{b => b && <span>{b.percent}%{b.charging ? " ⚡" : ""}</span>}</Battery>
+```
+
+The child gets `{ percent, charging }`, or `null` before the first reading
+and on a machine without that battery, so a desktop simply draws nothing.
+`device` picks the battery (default `BAT0`), `refreshSeconds` defaults to 10.
+
+### Notifications: `Notifications`
+
+The desktop notifications held by `tauler-notify`, tauler's own notification
+daemon (installed with tauler, `bin` defaults to `~/.cargo/bin/tauler-notify`).
+
+```jsx
+<Notifications>
+  {(list, actions) => list.slice(0, 3).map(n => (
+    <div on_click={[actions.dismiss(n.id)]}>{n.summary}</div>
+  ))}
+</Notifications>
+```
+
+Each notification has at least `id`, `summary` and `body`.
+`actions.dismiss(id)` returns an intent for an `on_click`.
+
+### ClaudeUsage: `ClaudeUsage`
+
+Claude Code's five-hour rate-limit usage, per account.
+
+```jsx
+<ClaudeUsage>
+  {accounts => accounts.map(a => <span>{a.label}: {a.percent}%</span>)}
+</ClaudeUsage>
+```
+
+The child gets `[{ label, percent, resetsIn }]`, `resetsIn` in seconds, and an
+empty list while no Claude Code session has reported in the last 15 minutes.
+
+Only Claude Code's status line sees the rate limits, so this needs both
+scripts from `bin/` in `~/.local/bin`, and Claude Code's status line pointed
+at the first:
+
+```json
+"statusLine": { "type": "command", "command": "bash ~/.local/bin/tauler-claude-statusline" }
+```
+
+`tauler-claude-statusline` records each session's numbers in
+`/tmp/claude-usage` and prints a short `5h:NN%` status line;
+`tauler-claude-usage` (the `bin` prop) reads them back. Requires `jq`.
 
 ## Display components
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Claude Code `statusLine` command for the ClaudeUsage data component (data/ClaudeUsage.jsx).
+#
+# Claude Code pipes a JSON payload to its status line on every refresh, including the account's
+# rate limits. This records each session's payload in /tmp/claude-usage/<session>.json, tagged
+# with the account (its subscription type) and the time, for `tauler-claude-usage` to read back,
+# and prints a short `5h:NN%` status line.
+#
+# In ~/.claude/settings.json:
+#   "statusLine": { "type": "command", "command": "bash ~/.local/bin/tauler-claude-statusline" }
+INPUT=$(cat)
+OUT_DIR=/tmp/claude-usage
+mkdir -p "$OUT_DIR"
+
+SESSION=$(printf '%s' "$INPUT" | jq -r '.session_id // "unknown"')
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+ACCOUNT=$(jq -r '.claudeAiOauth.subscriptionType // "claude"' "$CONFIG_DIR/.credentials.json" 2>/dev/null || echo claude)
+NOW=$(date +%s)
+
+TMP=$(mktemp "$OUT_DIR/.tmp.XXXXXX")
+printf '%s' "$INPUT" \
+  | jq --arg account "$ACCOUNT" --argjson ts "$NOW" '. + {_relay: {account: $account, written_at: $ts}}' \
+  > "$TMP"
+mv "$TMP" "$OUT_DIR/$SESSION.json"
+
+printf '%s' "$INPUT" | jq -r 'if .rate_limits.five_hour then "5h:\(.rate_limits.five_hour.used_percentage | round)%" else "" end' 2>/dev/null

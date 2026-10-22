@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Prints one JSON line of Claude Code's five-hour usage per account, for the ClaudeUsage data
+# component (data/ClaudeUsage.jsx):
+#   {"accounts":[{"label":"max","percent":42,"resetsIn":5400}]}
+#
+# Reads what `tauler-claude-statusline` records in /tmp/claude-usage: the newest record per
+# account, ignoring any older than 15 minutes (no session has refreshed its status line since).
+OUT_DIR=/tmp/claude-usage
+NOW=$(date +%s)
+STALE=900
+
+if ! ls "$OUT_DIR"/*.json &>/dev/null; then
+  echo '{"accounts":[]}'
+  exit 0
+fi
+
+# `email` is the field's name in records written before it was renamed to `account`.
+jq -sc --argjson now "$NOW" --argjson stale "$STALE" '
+  map(select($now - ._relay.written_at <= $stale))
+  | map(._relay.account //= ._relay.email)
+  | group_by(._relay.account)
+  | map(max_by(._relay.written_at))
+  | map(select(.rate_limits.five_hour != null))
+  | map({
+      label: ._relay.account,
+      percent: (.rate_limits.five_hour.used_percentage | floor),
+      resetsIn: ((.rate_limits.five_hour.resets_at - $now) | if . < 0 then 0 else . end)
+    })
+  | {accounts: .}
+' "$OUT_DIR"/*.json 2>/dev/null || echo '{"accounts":[]}'
