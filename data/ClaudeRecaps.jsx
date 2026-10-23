@@ -10,8 +10,8 @@
 // Empty until the first reading.
 //
 // `dirs` is part of the command, so keep it stable: changing the set respawns the subprocess.
-// Needs bin/tauler-claude-recaps in ~/.local/bin (or pass `bin`) and jq.
-export const DEFAULT_BIN = "~/.local/bin/tauler-claude-recaps";
+// Runs bin/tauler-claude-recaps from this package (or pass `bin`); needs jq.
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-claude-recaps`;
 
 const quote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 

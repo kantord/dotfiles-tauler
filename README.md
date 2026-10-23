@@ -99,8 +99,8 @@ ch.kind === "output" && ch.state === "running"`; the default mic, `ch.default
 monitoring tools that open a capture stream (pavucontrol's peak meters, say)
 do show up as recording streams, so filter on `app` if that bothers you.
 
-All three take `bin` (default `~/.local/bin/tauler-volume`), where you put
-the module script (below). The list in `AudioChannels` is re-read every two
+All three take `bin`, defaulting to this package's own `bin/tauler-volume`
+(below). The list in `AudioChannels` is re-read every two
 seconds via `pw-dump`, which costs a few tens of milliseconds.
 
 The round trip is the whole design: a drag sends an intent, `wpctl` changes
@@ -108,16 +108,10 @@ the device, the module emits the new state, and the next tick redraws
 whatever control you put on it. Changes made elsewhere (media keys,
 pavucontrol) show up within two seconds the same way.
 
-The module script needs to be on disk. Git-package imports resolve to
-`index.jsx` only and the package cache path includes the commit sha, so the
-component cannot point at its own copy; put it somewhere stable:
-
-```sh
-cp ~/.cache/tauler/pkg/gh/kantord/dotfiles-tauler/*/bin/tauler-volume ~/.local/bin/
-chmod +x ~/.local/bin/tauler-volume
-```
-
-or pass `bin="/wherever/you/put/it"`. Requires `pw-dump`, `wpctl` (PipeWire
+Every Data component here runs its script straight from the package checkout
+(`import.meta.dirname`, a tauler newer than 0.6.3), so the script always matches
+the pinned commit and there is nothing to install. Pass `bin` to run your own
+program instead. Requires `pw-dump`, `wpctl` (PipeWire
 and WirePlumber) and `jq`.
 
 ### Weather: `Weather`
@@ -199,9 +193,9 @@ Claude Code's five-hour rate-limit usage, per account.
 The child gets `[{ label, percent, resetsIn }]`, `resetsIn` in seconds, and an
 empty list while no Claude Code session has reported in the last 15 minutes.
 
-Only Claude Code's status line sees the rate limits, so this needs both
-scripts from `bin/` in `~/.local/bin`, and Claude Code's status line pointed
-at the first:
+Only Claude Code's status line sees the rate limits, so Claude Code's status
+line has to run `bin/tauler-claude-statusline`. Its settings need a stable
+path, so copy that one script to `~/.local/bin`:
 
 ```json
 "statusLine": { "type": "command", "command": "bash ~/.local/bin/tauler-claude-statusline" }
@@ -230,8 +224,8 @@ dayOfMonth, isToday }` for the day shown.
 of the command, so changing it restarts the source with one fresh fetch,
 which is what you want for stepping through days.
 
-`bin` is the source, defaulting to `~/.local/bin/tauler-agenda-gcalcli` (copy
-it from `bin/`). It reads Google Calendar through
+`bin` is the source, defaulting to this package's `bin/tauler-agenda-gcalcli`.
+It reads Google Calendar through
 [gcalcli](https://github.com/insanum/gcalcli), refreshing every 5 minutes.
 Any program that takes the day offset as its first argument and prints those
 JSON lines works as a source. Requires gcalcli, logged in with `gcalcli init`,
@@ -264,8 +258,8 @@ An action that opens a URL with `xdg-open`; its child gets the action.
 <OpenUrl>{open => <span on_click={[open("https://github.com")]}>GitHub</span>}</OpenUrl>
 ```
 
-`open(url)` returns an intent for an `on_click`. Needs `bin/tauler-open` in
-`~/.local/bin` (or pass `bin`), `jq` and `xdg-open`.
+`open(url)` returns an intent for an `on_click`. Needs `jq` and
+`xdg-open`.
 
 ### EnwiroEnvs: `EnwiroEnvs`
 
@@ -282,7 +276,7 @@ scores }]`: `status` is enwiro's own (`{ type: "cooked", phase: "active" }`),
 `statusSince` the epoch second it last changed, `workspace` the directory the
 environment opens, `scores.launcher` what enwiro's launcher sorts by. Lists
 like "ready" or "done today" are filters in the layout. Needs
-`bin/tauler-enwiro-envs` in `~/.local/bin` (or pass `bin`), `enw` and `jq`.
+`enw` and `jq`.
 
 ### ClaudeRecaps: `ClaudeRecaps`
 
@@ -297,8 +291,7 @@ each of a set of directories.
 
 `recaps` maps each directory with a recap to its newest one, shortened to a
 line of at most 110 characters. `dirs` is part of the command, so changing
-the set restarts the subprocess. Needs `bin/tauler-claude-recaps` in
-`~/.local/bin` (or pass `bin`) and `jq`.
+the set restarts the subprocess. Needs `jq`.
 
 ## Display components
 

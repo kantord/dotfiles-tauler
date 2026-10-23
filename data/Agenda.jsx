@@ -12,7 +12,7 @@
 // it restarts the source with one fresh fetch. `bin` is the source: any program that takes the
 // offset as its first argument and prints those JSON lines. The default, bin/tauler-agenda-gcalcli,
 // reads Google Calendar through gcalcli.
-export const DEFAULT_BIN = "~/.local/bin/tauler-agenda-gcalcli";
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-agenda-gcalcli`;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function dayInfo(day) {

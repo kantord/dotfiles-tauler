@@ -17,7 +17,7 @@
 // app, media, state, default, volume, muted }` (see bin/tauler-volume for the
 // values), and the actions take the channel id first: `actions.setVolume(id, n)`,
 // `actions.toggleMute(id)`.
-export const DEFAULT_BIN = "~/.local/bin/tauler-volume";
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-volume`;
 
 function VolumeData({ bin, target, children }) {
   const child = Array.isArray(children) ? children[0] : children;

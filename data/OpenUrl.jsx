@@ -4,8 +4,8 @@
 //   <OpenUrl>{open => <span on_click={[open("https://github.com")]}>GitHub</span>}</OpenUrl>
 //
 // `open(url)` returns an intent for an `on_click`. Every <OpenUrl> shares one small subprocess,
-// bin/tauler-open (in ~/.local/bin, or pass `bin`), which runs xdg-open for each request.
-export const DEFAULT_BIN = "~/.local/bin/tauler-open";
+// bin/tauler-open from this package (or pass `bin`), which runs xdg-open for each request.
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-open`;
 
 export default function OpenUrl({ bin = DEFAULT_BIN, children }) {
   const child = Array.isArray(children) ? children[0] : children;

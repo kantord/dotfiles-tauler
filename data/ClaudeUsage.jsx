@@ -11,7 +11,7 @@
 //
 // The child gets `[{ label, percent, resetsIn }]` (`resetsIn` in seconds), empty while no
 // session has reported recently. `label` is the account's subscription type.
-export const DEFAULT_BIN = "~/.local/bin/tauler-claude-usage";
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-claude-usage`;
 const MIN_REFRESH_SECONDS = 10;
 
 export default function ClaudeUsage({ bin = DEFAULT_BIN, refreshSeconds = 60, children }) {

@@ -10,8 +10,8 @@
 //   - scores: enwiro's relevance scores; `scores.launcher` is what its launcher sorts by.
 //
 // Every <EnwiroEnvs> with the same `refreshSeconds` shares one subprocess, so a layout can use it
-// in several places. Needs bin/tauler-enwiro-envs in ~/.local/bin (or pass `bin`), enw and jq.
-export const DEFAULT_BIN = "~/.local/bin/tauler-enwiro-envs";
+// in several places. Runs bin/tauler-enwiro-envs from this package (or pass `bin`); needs enw and jq.
+export const DEFAULT_BIN = `${import.meta.dirname}/../bin/tauler-enwiro-envs`;
 const MIN_REFRESH_SECONDS = 1;
 
 export default function EnwiroEnvs({ bin = DEFAULT_BIN, refreshSeconds = 5, children }) {
