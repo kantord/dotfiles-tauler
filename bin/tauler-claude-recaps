@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# The newest Claude Code recap per directory, for the ClaudeRecaps data component
+# (data/ClaudeRecaps.jsx). Prints one JSON line every 10 seconds:
+#   {"/home/you/repos/tauler":"Fixing the frame panel's paint order..."}
+#
+# Usage: tauler-claude-recaps DIR...
+#
+# Claude Code keeps each directory's session transcripts in ~/.claude/projects/<dir with every
+# non-alphanumeric character replaced by a dash>/*.jsonl, and writes a recap into the transcript
+# (an `away_summary`) when you step away. For each DIR this reads the newest transcript that has
+# one; directories without a recap are left out. Requires jq.
+PROJECTS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+MAX_LEN=110
+# Transcripts grow to tens of MB, so only the tail is read.
+TAIL_BYTES=4000000
+INTERVAL=10
+shopt -s nullglob
+
+latest_recap() {
+  local files=("$1"/*.jsonl) transcript text
+  [ ${#files[@]} -gt 0 ] || return 1
+  while read -r transcript; do
+    # `tail -c` can slice mid-line, so drop the first (possibly partial) line.
+    text=$(tail -c "$TAIL_BYTES" "$transcript" | tail -n +2 \
+      | grep '"subtype":"away_summary"' | tail -1 \
+      | jq -r '.content // empty | sub("\\s*\\(disable recaps in /config\\)\\s*$"; "")' 2>/dev/null)
+    if [ -n "$text" ]; then
+      printf '%s\n' "$text"
+      return 0
+    fi
+  done < <(ls -t "${files[@]}" 2>/dev/null)
+  return 1
+}
+
+while true; do
+  for dir in "$@"; do
+    recap=$(latest_recap "$PROJECTS_DIR/$(printf '%s' "$dir" | sed 's/[^a-zA-Z0-9]/-/g')") || continue
+    jq -nc --arg k "$dir" --arg v "$recap" --argjson max "$MAX_LEN" '
+      ($v | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "")
+          | if length > $max then .[0:$max - 1] + "…" else . end) as $t
+      | if ($t | length) > 0 then {($k): $t} else empty end'
+  done | jq -sc 'add // {}'
+  sleep "$INTERVAL"
+done

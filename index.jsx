@@ -11,12 +11,18 @@ export { default as Battery } from './data/Battery.jsx';
 export { default as Notifications } from './data/Notifications.jsx';
 export { default as ClaudeUsage } from './data/ClaudeUsage.jsx';
 export { default as Agenda } from './data/Agenda.jsx';
+export { default as EnwiroEnvs } from './data/EnwiroEnvs.jsx';
+export { default as GitHubSearch } from './data/GitHubSearch.jsx';
+export { default as OpenUrl } from './data/OpenUrl.jsx';
+export { default as ClaudeRecaps } from './data/ClaudeRecaps.jsx';
 
 export { default as SidebarSection } from './display/SidebarSection.jsx';
 export { default as WeatherSummary } from './display/WeatherSummary.jsx';
 
 export { default as Chart } from './charts/Chart.jsx';
 export { rect, rule } from './charts/marks.jsx';
+
+export { default as hueFor } from './lib/hueFor.jsx';
 
 export { default as KittyConfig } from './units/KittyConfig.jsx';
 export { default as KittyTheme } from './units/KittyTheme.jsx';

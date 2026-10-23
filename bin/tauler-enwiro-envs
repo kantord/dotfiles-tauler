@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Every enwiro environment as one JSON line, for the EnwiroEnvs data component
+# (data/EnwiroEnvs.jsx). Repeats every INTERVAL seconds (first argument, default 5).
+#
+#   [{"name":"tauler#660","cookbook":"github","description":"...","status":{"type":"cooked",
+#     "phase":"active"},"statusSince":1792700000,"workspace":"/home/you/repos/tauler",
+#     "scores":{"launcher":1.5,"slot":1.0}}, ...]
+#
+# `enw ls --envs --json` gives name, cookbook, description, status and scores. Two fields come
+# from the environment's own directory, which `enw ls` does not report:
+#   - statusSince: when its status last changed (epoch seconds), from meta.json's event_log;
+#     null if it never changed.
+#   - workspace: the directory it opens, the one symlink in the environment's directory.
+#
+# Requires enw (on PATH or in ~/.cargo/bin) and jq. Prints [] when enw fails.
+set -u
+INTERVAL=${1:-5}
+ENVS_DIR="${ENWIRO_ENVS_DIR:-$HOME/.enwiro_envs}"
+ENW=$(command -v enw || echo "$HOME/.cargo/bin/enw")
+shopt -s nullglob
+
+# {name: {statusSince, workspace}} for every environment directory, in one jq pass.
+local_facts() {
+  local links=() targets=() i pairs=""
+  mapfile -d '' links < <(find "$ENVS_DIR" -mindepth 2 -maxdepth 2 -type l -print0 2>/dev/null)
+  if [ ${#links[@]} -gt 0 ]; then
+    mapfile -t targets < <(realpath -m -- "${links[@]}")
+    for i in "${!links[@]}"; do
+      pairs+="${links[$i]%/*}"$'\t'"${targets[$i]}"$'\n'
+    done
+  fi
+  local metas=("$ENVS_DIR"/*/meta.json)
+  jq -nc --arg pairs "$pairs" '
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    ($pairs | split("\n") | map(select(length > 0) | split("\t") | {key: (.[0] | split("/")[-1]), value: .[1]}) | from_entries) as $ws
+    | [inputs | {key: (input_filename | split("/")[-2]),
+                 value: {statusSince: ([.event_log[]? | select(.type == "status_change") | .ended | epoch] | max // null)}}]
+    | from_entries
+    | with_entries(.value.workspace = ($ws[.key] // null))
+  ' "${metas[@]}" 2>/dev/null || echo '{}'
+}
+
+while true; do
+  facts=$(local_facts)
+  "$ENW" ls --envs --json 2>/dev/null \
+    | jq -sc --argjson facts "$facts" 'map(. + ($facts[.name] // {statusSince: null, workspace: null}))' \
+    || echo '[]'
+  sleep "$INTERVAL"
+done

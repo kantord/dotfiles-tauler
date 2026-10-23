@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -33,12 +33,13 @@ plus the two things it says have no kind at all:
 
 | Folder     | Kind    | Draws               | Ships here                                      |
 |------------|---------|----------------------|--------------------------------------------------|
-| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx` |
+| `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
+| `lib/`     | —       | plain functions, no component | `hueFor.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
-| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline`, `tauler-agenda-gcalcli` |
+| `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline`, `tauler-agenda-gcalcli`, `tauler-enwiro-envs`, `tauler-open`, `tauler-claude-recaps` |
 
 There is no `controls/` folder and no premade "card" that wires a Data
 component to a Display one — see [Recipes](#recipes) for why. `<Slider>` and
@@ -237,6 +238,68 @@ JSON lines works as a source. Requires gcalcli, logged in with `gcalcli init`,
 and `jq`. If the login expires, the events go empty and gcalcli's
 `invalid_grant` error shows up in tauler's log.
 
+### GitHubSearch: `GitHubSearch`
+
+The issues and pull requests a GitHub search finds, through `gh`.
+
+```jsx
+<GitHubSearch query="is:pr is:open review-requested:@me">
+  {items => items.map(i => <span>{i.repo} #{i.number} {i.title}</span>)}
+</GitHubSearch>
+```
+
+`query` is GitHub's own [search syntax](https://docs.github.com/search-github),
+`@me` included, so the layout names no account. `items` is
+`[{ kind, repo, number, title, url, updatedAt }]` (`kind` is `"pr"` or
+`"issue"`), the first 100 matches, empty until the first answer or while `gh`
+fails. `refreshSeconds` defaults to 300, floor 60. Searches with the same
+query share a subprocess. Counting per repo, or anything else, is the
+layout's job. Requires `gh` (logged in) and `jq`.
+
+### OpenUrl: `OpenUrl`
+
+An action that opens a URL with `xdg-open`; its child gets the action.
+
+```jsx
+<OpenUrl>{open => <span on_click={[open("https://github.com")]}>GitHub</span>}</OpenUrl>
+```
+
+`open(url)` returns an intent for an `on_click`. Needs `bin/tauler-open` in
+`~/.local/bin` (or pass `bin`), `jq` and `xdg-open`.
+
+### EnwiroEnvs: `EnwiroEnvs`
+
+Every [enwiro](https://github.com/kantord/enwiro) environment.
+
+```jsx
+<EnwiroEnvs>
+  {envs => envs.filter(e => e.status?.type === "done").map(e => <span>{e.name}</span>)}
+</EnwiroEnvs>
+```
+
+`envs` is `[{ name, cookbook, description, status, statusSince, workspace,
+scores }]`: `status` is enwiro's own (`{ type: "cooked", phase: "active" }`),
+`statusSince` the epoch second it last changed, `workspace` the directory the
+environment opens, `scores.launcher` what enwiro's launcher sorts by. Lists
+like "ready" or "done today" are filters in the layout. Needs
+`bin/tauler-enwiro-envs` in `~/.local/bin` (or pass `bin`), `enw` and `jq`.
+
+### ClaudeRecaps: `ClaudeRecaps`
+
+The newest Claude Code recap (the summary it writes when you step away) for
+each of a set of directories.
+
+```jsx
+<ClaudeRecaps dirs={["/home/you/repos/tauler"]}>
+  {recaps => <span>{recaps["/home/you/repos/tauler"]}</span>}
+</ClaudeRecaps>
+```
+
+`recaps` maps each directory with a recap to its newest one, shortened to a
+line of at most 110 characters. `dirs` is part of the command, so changing
+the set restarts the subprocess. Needs `bin/tauler-claude-recaps` in
+`~/.local/bin` (or pass `bin`) and `jq`.
+
 ## Display components
 
 ### SidebarSection
@@ -309,6 +372,21 @@ import { Chart, rect, rule } from "@gh/kantord/dotfiles-tauler";
 
 Tick lines and labels are the theme's `foreground`, via tauler's `themeColor`
 global: needs tauler 0.6.3 or later.
+
+## Helpers
+
+### hueFor
+
+A stable hue (0–359) for a name, for colour-coding things like repositories.
+
+```jsx
+import { hueFor } from "@gh/kantord/dotfiles-tauler";
+
+<div style={{ backgroundColor: `hsla(${hueFor("tauler")}, 60%, 60%, 0.1)` }} />
+```
+
+A hash of the name, so the same name gets the same hue on every machine with
+nothing stored.
 
 ## Recipes
 

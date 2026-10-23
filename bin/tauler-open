@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The module behind the OpenUrl data component (data/OpenUrl.jsx): reads intents on stdin, one
+# JSON object per line, and opens each `url` with xdg-open, in the background.
+#   {"url":"https://github.com"}
+# Requires jq and xdg-open.
+while IFS= read -r line; do
+  url=$(printf '%s' "$line" | jq -r '.url // empty' 2>/dev/null)
+  [ -n "$url" ] && xdg-open "$url" >/dev/null 2>&1 &
+done
