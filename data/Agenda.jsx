@@ -1,5 +1,5 @@
-// Data component: one day of calendar events. Draws nothing; `Chart` (rect marks) or a list
-// can draw them.
+// Data component: one day of calendar events. Draws nothing; its child draws them, as a
+// list or as a `Plot` (see the README).
 //
 //   <Agenda>{(events, info) => events.map(e => <span>{e.start} {e.title}</span>)}</Agenda>
 //   <Agenda day={1}>{...}</Agenda>          // tomorrow

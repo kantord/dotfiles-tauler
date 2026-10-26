@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Chart, rect, rule, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Text, Arc, Layer, Scale, Axis, Grid, stack, dodge, defineMark, colorScale, chartTheme, bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -35,7 +35,7 @@ plus the two things it says have no kind at all:
 |------------|---------|----------------------|--------------------------------------------------|
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
-| `charts/`  | Display | marks and a spec, as pixels | `Chart.jsx`, `marks.jsx`, `compile.jsx`  |
+| `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `theme.jsx`, `stats.jsx` |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `lib/`     | —       | plain functions, no component | `hueFor.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
@@ -207,8 +207,8 @@ path, so copy that one script to `~/.local/bin`:
 
 ### Agenda: `Agenda`
 
-One day of calendar events, for a timeline (`Chart` with `rect` marks) or a
-list.
+One day of calendar events, for a list or a timeline (a `Plot` with `Rect`s
+or `Link`s).
 
 ```jsx
 <Agenda day={0}>
@@ -329,42 +329,85 @@ While the first reading is still loading, or if a fetch fails, shows `…` and
 
 ## Charts
 
-A small grammar-of-graphics `<Chart>`, shaped after
-[TanStack Charts](https://tanstack.com/charts) (marks take their own data;
-channels are field names or accessors; scales carry their guides; marks draw
-in array order). Only the cut a vertical strip needs: one fixed linear `y`
-scale, `rect` and `rule` marks, and a renderer that draws them as flex rows.
-`compile.jsx` turns a spec into a renderer-neutral scene; `Chart.jsx` is the
-only part that knows about tauler.
+A grammar of graphics on d3, drawn as tauler `<D3Figure>`s. A `Plot` takes
+marks (`Line`, `Area`, `Rect`, `Bar`, `Dot`, `Link`, `Text`, `Arc`) and pieces
+(`Layer`, `Scale`, `Axis`, `Grid`) as JSX children. Needs tauler 0.7.0 or later
+(`D3Figure`); tauler downloads d3 itself. The design and its decisions are in
+[`charts/SPEC.md`](charts/SPEC.md).
 
 ```jsx
-import { Chart, rect, rule } from "@gh/kantord/dotfiles-tauler";
+import { Plot, Line, Area, Link, Layer, Axis, Grid, chartTheme } from "@gh/kantord/dotfiles-tauler";
 
-<Chart
-  scales={{ y: { domain: [360, 1320], ticks: [
-    { every: 60, overSpans: true, alpha: 0.18, label: v => v / 60 },
-    { every: 30, width: "30%", alpha: 0.08 },
-    { every: 15, width: "15%", alpha: 0.15, dotted: true },
-  ] } }}
-  marks={[
-    rect(events, { y1: "start", y2: d => d.end, fill: "color", label: "title" }),
-    rule([845], { y: d => d, label: () => "14:05" }, { stroke: "#ef4444" }),
-  ]}
-/>
+const theme = chartTheme(themeColor, "JetBrains Mono");   // the layout's own font
+
+<Plot width={248} height={110} theme={theme} data={samples} x="t" y="cpu">
+  <Grid channel="y" tone="soft" />
+  <Area fillOpacity={0.2} />
+  <Line />
+  <Layer data={[{ t: now }]} x="t">
+    <Link y1={-Infinity} y2={Infinity} stroke={theme.muted} strokeDasharray="3 3" />
+  </Layer>
+  <Axis channel="x" ticks={3} format="%H:%M" />
+  <Axis channel="y" ticks={3} />
+</Plot>
 ```
 
-- `rect(data, { y1, y2, fill, label })` — a block between two `y` values.
-- `rule(data, { y, label }, { stroke })` — a line at one `y` value.
-- A channel is a field name (`"start"`) or an accessor `(datum, index) => value`.
-  Constants (`stroke`) are the third argument and stay out of the channels.
-- `ticks` are guides of the scale, coarsest first; a value gets the first tick
-  whose `every` divides it. `overSpans` lets it cross a rect; `label(v)`
-  writes text beside it.
-- Values are plain numbers in the scale's units. Turning "09:30" into minutes
-  is the caller's job; nothing here knows about time.
+Stacked bars per day (`dodge()` puts them side by side), and a histogram:
 
-Tick lines and labels are the theme's `foreground`, via tauler's `themeColor`
-global: needs tauler 0.6.3 or later.
+```jsx
+import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler";
+
+<Plot width={248} height={90} theme={theme} data={hours} x="day" y="hours" color="project">
+  <Scale channel="x" type="band" />
+  <Bar position={stack()} />
+  <Axis channel="x" />
+</Plot>
+
+<Plot width={248} height={80} theme={theme} data={bin(latencies, { value: "ms", thresholds: 8 })}>
+  <Bar x1="x0" x2="x1" y="count" />
+</Plot>
+```
+
+- **Channels** are `x x1 x2 y y1 y2 color group`: a field name, a function of
+  the datum, or a constant (`±Infinity` is the plot's edge). A mark inherits
+  the Plot's (or its `Layer`'s) channels, except that setting any channel of
+  an axis drops the inherited ones of that axis; `color={null}` drops one.
+- **Marks.** `Rect` takes an interval (`x1 x2`) or a point per axis: on a band
+  scale a point fills the band (`inset` px less each side), elsewhere it is
+  `width` px wide. `Bar` is a `Rect` from 0 on its value axis (y, or x when y
+  is a band). `Link` is a segment; `Arc` a pie, donut (`inner`) or gauge
+  (`startAngle`, `endAngle`) with `value` a field name. Style props (`fill`,
+  `stroke`, `r`, `text`, `dy`, ...) are constants or functions of the datum.
+- **Positions:** `position={stack()}` piles rows sharing x (`offset:
+  "expand"` for shares, `along: "x"` for horizontal); `dodge()` gives each
+  series a slot of its band.
+- **Scales** are inferred from all values: Dates → `time`, numbers →
+  `linear`, anything else → `band`; numeric `color` → sequential. JSON has no
+  Dates, so ISO strings need `<Scale channel="x" type="time" />`, and integer
+  categories (hours, weeks) need `type="band"`. `Scale` also takes `domain`,
+  `range` (colours for `color`; three stops make it diverging), `padding`, and
+  `type="log"`.
+- **Statistics** are plain `data -> data` functions, called before the `Plot`: `bin`, `bin2d`,
+  `group`, `rolling`, `cumsum`, `kde`, `ecdf`, `boxStats`.
+- **Your own marks:** `defineMark(name, { render(rows, ctx) { return shapes } })`.
+  `ctx` has `x`, `y` (value → pixel), `color`, `area`, `bandwidth`, `theme`,
+  `props`, `resolve` (a style prop), `field` (a value prop) and `measure`; a
+  shape is `{ t: "rect" | "circle" | "line" | "path" | "text", ...SVG attributes in camelCase }`.
+  `Arc` in `charts/marks.jsx` is a complete example.
+- **Legends** are ordinary tauler JSX beside the figure; `colorScale(keys,
+  theme)` gives the same colours the Plot uses.
+- `width` and `height` are required numbers; `margin={{ left: 4 }}` fixes a
+  side (for aligned small multiples). Text is measured as `characters × size ×
+  0.6`, which is exact for a monospace font such as JetBrains Mono; pass
+  `measure` for anything else.
+- **Keys and cost.** The figure's key is a hash of the compiled scene, so it
+  redraws exactly when its picture changes. Compiling runs every Tick: about
+  1.6 ms at 50 rows and 8 ms at 500. For thousands of rows, pass `key` and
+  change it whenever the data does; the Plot is then compiled only when tauler
+  draws it.
+- Everything a `Plot` is given must come from its props: tauler evaluates the
+  layout in three runtimes and matches figures by key, so never call
+  `new Date()` inside the layout; take the time from a stream (`Clock`).
 
 ## Helpers
 
@@ -598,6 +641,18 @@ ones added since: `include` (4.20), `tiling_drag` (4.21),
 `gaps`/`smart_gaps`/`smart_borders` and per-workspace gaps (4.22), the
 bar's `workspace_command` (4.23), `tiling_drag swap_modifier` and
 `popup_during_fullscreen all` (4.24).
+
+## Development
+
+Tests run with Vitest: `pnpm install`, then `pnpm test`. `test/tauler.js`
+stands in for tauler: its JSX factory, `D3Figure`, and a Draw step that runs a
+figure's `draw` against linkedom the way tauler's Draw runtime does.
+
+The charts have three kinds of test: unit tests; a grammar stress test
+(`charts/test/grammar/`, the scenarios of a minimal ggplot2 suite on synthetic
+data, each drawing kept as an SVG file; `pnpm test -u` accepts a change, `pnpm
+gallery` writes a page showing them all); and fast-check properties
+(`charts/test/properties.test.js`) for invariants on generated data.
 
 ## License
 

@@ -19,8 +19,11 @@ export { default as ClaudeRecaps } from './data/ClaudeRecaps.jsx';
 export { default as SidebarSection } from './display/SidebarSection.jsx';
 export { default as WeatherSummary } from './display/WeatherSummary.jsx';
 
-export { default as Chart } from './charts/Chart.jsx';
-export { rect, rule } from './charts/marks.jsx';
+export { Plot } from './charts/Plot.jsx';
+export { chartTheme } from './charts/theme.jsx';
+export { Layer, Scale, Axis, Grid, defineMark, stack, dodge, colorScale } from './charts/core.jsx';
+export { Line, Area, Rect, Bar, Dot, Link, Text, Arc } from './charts/marks.jsx';
+export { bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats } from './charts/stats.jsx';
 
 export { default as hueFor } from './lib/hueFor.jsx';
 
