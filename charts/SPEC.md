@@ -1,6 +1,7 @@
 # charts: a grammar of graphics for tauler
 
-Status: implemented (v5). v4 was reviewed in three rounds (tauler-fit skeptic, minimalist,
+Status: implemented (v5, as of 2026-10-27); planned work is in `charts/GAPS.md`, which owns the
+future (items move here when they land). v4 was reviewed in three rounds (tauler-fit skeptic, minimalist,
 generality skeptic), then by the implementer; where the code differs from v4 the reason is in
 section 10. Section 3 records the draft this replaced.
 
@@ -12,13 +13,94 @@ annotated/layered) is composed from a few orthogonal pieces, in JSX, from plain 
 as a tauler `<D3Figure>`. A user adds marks, statistics and positions without editing this
 package. Nothing in core is specific to time series, calendars or any one widget.
 
-Non-goals: in-figure interactivity (a figure is a static Picture); animation; a dataframe;
-Sankey, parallel coordinates (one scale per row is unsupported; use raw d3 in a D3Figure);
-legends inside the Picture (5.10). Parked: polar coordinates (radar, coxcomb, sunburst), which
-need a coordinate stage (section 10). Trees and maps are marks (5.12).
+### Scope rule
+
+The library serves two uses with equal weight: exploratory data analysis (any statistic, any
+encoding, small multiples, quick iteration) and decoration (a status bar is also something to
+look at, so gradients, textures, type and shape are first-class). Users get the freedom to build
+either.
+
+- **Every chart type is in scope** unless a non-goal below excludes it.
+- **A non-goal needs a reason from the host** (tauler), never convenience or "another library
+  does not have it". "Use raw d3 in a `D3Figure`" is not support: a chart the library cannot
+  express is a gap.
+- **Expressiveness comes from a few abstract pieces that combine with data**, as in any grammar
+  of graphics, not from a catalogue of features. Support for everything must be reached with the
+  fewest pieces. A new need is met first by generalising an existing piece; a new piece must
+  show why no existing one can be stretched to cover it.
+- **Generality comes from seams, not from chart types.** The core stays small. Every stage of the
+  pipeline (section 4) is open to extension, and a new capability must add a seam, not a special
+  case. Open today: statistics, positions, marks. Closed or missing today: scale types, channels
+  (a mark's own channels cannot train a scale), a stage after the scales are built, coordinates,
+  the scene's shape schema, axes and guides.
+- **Scope growth from universality is accepted.** A universal charting tool grows; that is the
+  cost of the goal, not a defect. Nothing is descoped to keep the plan short. The control is the
+  fewest-pieces test above, plus a design precondition per large item (`charts/GAPS.md`), never a
+  demand that a user justify a chart type first.
+- **Do not inherit from ggplot2 or any other implementation for its own sake.** A feature that is
+  confusing, unintuitive or absent from other grammar-of-graphics libraries is dropped or
+  redesigned, not copied.
+
+### Non-goals (each tied to a host constraint)
+
+- In-figure interactivity (hover, tooltips, pointer): a figure is a static Picture (ADR 0044),
+  so the host owns interaction state. A `Plot` is a pure function of that state (a pointer, a
+  brush, a zoom window, a playback clock); the catalog's group d draws such states.
+- Animation: the same constraint; a motion example is a function of (changes so far, now).
+- A dataframe: data is plain JSON (ADR 0013).
+- Legends inside the Picture (5.10): legends are tauler JSX beside the figure, so swatches
+  cannot drift from the chart. The library exports what a legend needs (`colorScale`).
+
+### In scope, not yet designed
+
+Previously listed as non-goals; the reasons given were convenience, so they are gaps now:
+polar coordinates (radar, coxcomb, sunburst, polar lines), which need a coordinate mapping
+(GAPS 1.4b; the earlier discussion is in section 10); Sankey and parallel coordinates (buildable from a statistic and existing marks; the old
+"one scale per row" reason does not hold, see GAPS 2.2); multi-line and wrapped text; shape,
+size and opacity as scale-trained channels; gradients, patterns and other decoration in the scene
+schema. See `charts/GAPS.md` for the work list. Trees and maps are marks (5.12).
+
+### Principles
+
+1. Few orthogonal pieces compose any chart; nothing in core is specific to one chart type.
+2. Open for extension without editing the package; the library's own marks use the same seam.
+3. Plain data and plain functions over framework machinery; only what needs rows is in the
+   grammar.
+4. Pure and deterministic: the picture is a function of props; the key changes exactly when it does.
+5. Explicit over magic, loud over silent: bad input throws, it does not draw something wrong.
+6. A staged pipeline in which each stage sees only what exists at that point.
+7. Sized for the host and decided by measurement; leave out what the host already does.
+8. A layout is a statistic that returns rows; drawing is a mark. A layout fused into a mark
+   cannot be reused by another mark.
+9. Projection (and any other space, such as polar) is a plot-level coordinate that every mark
+   honours, not a property of one mark.
+
+### 1.1 Prior art and decisions behind principles 8 and 9
+
+Checked against other grammar-of-graphics libraries (documentation read, except where noted):
+
+- Observable Plot draws a tree with ordinary link, dot and text marks driven by tree
+  transforms; for a treemap it ships no mark, and a published example runs d3's treemap and feeds
+  the rectangles to a plain `Rect`. Its `projection` is a top-level option shared by marks.
+- ggplot2's `coord_sf()` gives all layers one projection. ggraph picks a layout once for the
+  plot and draws it with thin geoms. treemapify puts the layout inside the geom (identity
+  statistic), so that ecosystem is split.
+- Not checked (do not rely on it): other libraries, such as Vega, may also run hierarchy layouts
+  as data transforms drawn with generic marks.
+
+Hierarchy layouts here (`Treemap`, `Tree`, `Pack`, `Partition`, `hierarchy.jsx`) fuse layout,
+colour and labels in one mark, and only `Geo` and `GeoDot` honour the projection. Both conflict
+with principles 8 and 9 and are tracked in `charts/GAPS.md` (GAPS 3.8a and GAPS 1.4a).
+
+Decisions since v5 (rationale in `charts/GAPS.md`): dodge fits the series present in each band
+and has no `preserve` flag; jitter is seeded from a row key (a user accessor), and rows
+without a key overlap; edge room is a pixel `rangePad` on the range; vector length is in pixels; `Bar` at zero draws nothing while `Rect`
+zero-height lines stay (median rules); cross-panel category order comes from a helper that takes
+all the data; a stage after the scales exists only for layouts that create values needing
+their own scale.
 
 Reference points: ggplot2 (layer = data + mapping + stat + geom + position) and Observable
-Plot (marks + transforms + channels + scales).
+Plot (marks + transforms + channels + scales). They are references, not templates (scope rule).
 
 ## 2. Constraints from tauler
 
@@ -357,7 +439,8 @@ Verdicts: **core** = tier 1 JSX; **recipe** = needs a stats call; **mark** = nee
 | pie / donut / gauge | `<Arc data={parts} value="n" color="k" inner={.6}/>` | core (`Arc`) |
 | violin / hexbin / ridgeline | `defineMark` returning path shapes | mark |
 | dual axis (overlay) | tier 2 named scales | tier 2 |
-| radar, Sankey, parallel coords | raw D3Figure | out of scope |
+| radar | `coord={polar()}` | planned (GAPS 1.4b) |
+| Sankey, parallel coords | statistic + existing marks | planned (GAPS 2.2) |
 
 ### 7.1 Grammar stress test (scorecard)
 
@@ -381,7 +464,7 @@ every drawing is kept as an SVG file (`__svg__/`, `pnpm gallery` to view them). 
 | — | scale vs coord transform | differs by design: statistics run before scales, so `log` acts like `coord_trans` |
 | 18 | merged legends | non-goal (legends are tauler JSX; `colorScale` gives the Plot's colours, tested) |
 | 20 | pie | pass (`Arc`) |
-| 21 | coxcomb, polar munching | non-goal (no coord stage) |
+| 21 | coxcomb, polar munching | planned (GAPS 1.4b; no coordinate mapping yet) |
 | 22 | coord_flip | pass (swap the channels) |
 | 23, 24, 25 | facets with free scales; a grid with empty panels and margins; per-panel annotations | pass (one Plot per panel, plain JS) |
 | 26 | Minard's march | pass; **gap**: no domain expansion, so labels at the data's edges need `margin` |
@@ -412,8 +495,8 @@ by reading Observable Plot's test gallery (`test/plots`, 371 cases).
 
 Open (decisions, not bugs): numeric years format as `2,020` (d3's default grouping); `Text`'s
 `text="field"` is literal text, where Observable Plot reads a field; an ordinal palette repeats
-past its length (six colours in `chartTheme`). Still non-goals: polar, geo, interaction, trees,
-multi-line text.
+past its length (six colours in `chartTheme`). Not built yet (scope rule, section 1): polar,
+multi-line text. Interaction stays a non-goal. Geo and trees are marks (5.12).
 
 ## 8. Roadmap and acceptance tests
 
@@ -443,8 +526,8 @@ scales, function scales, custom-key training, `sqrt`.
 ## 9. Open items
 
 - Text measurement beyond monospace (a per-font width table).
-- Segment-coloured lines (threshold colouring by row) are unsupported; two filtered layers
-  approximate it.
+- Segment-coloured lines work (consecutive pairs drawn as `Link`s with a colour scale or a
+  `stroke` function). Missing: one smooth gradient along a single path.
 - Roadmap step 8's "integer-band error text" is not specified anywhere else; nothing throws for
   integer categories on a linear axis (the README says to declare `type="band"`).
 
@@ -456,7 +539,8 @@ scales, function scales, custom-key training, `sqrt`.
   needs rows, so only it is in the grammar.
 - Rect: the "infer `[0,v]` / spans plot" magic was replaced by explicit `baseline` and `±Infinity`.
 - Polar coord, facet component, Legend, size/opacity channels, theme-slot colour strings,
-  `label` channel, `train`, `Rule`: cut. `Arc` kept as the dogfood mark because pie is common.
+  `label` channel, `train`, `Rule`: cut. (History: polar, and size and opacity channels, are in
+  scope again under section 1; see GAPS 1.4b and 2.1.) `Arc` kept as the dogfood mark because pie is common.
 - `key` vs `figureKey`: tauler's JSX keeps `key` in props, so `key` stays.
 - Dual axis: honestly tier 2; stacked Plots are not an equivalent.
 - Review by the implementer (before step 0), all accepted: (1) training and drawing use a row's
@@ -510,6 +594,7 @@ scales, function scales, custom-key training, `sqrt`.
 - Trees and maps reversed from non-goals to marks (5.12) at the user's request: d3's layouts
   and projections do the work, and `defineMark` already hands marks the pixel area, so the only
   core change is `ctx.projection`. Polar stays parked: unlike these, it needs every mark to map
-  (x, y) jointly, which is a coordinate stage (as in ggplot2, G2, ECharts, and Observable
-  Plot's projections); marks-only polar (Vega-Lite, Recharts, Plotly) was the cheaper option.
+  (x, y) jointly, which is a coordinate stage (as in ggplot2, G2 and ECharts; Observable
+  Plot's projections are geographic only); marks-only polar (Vega-Lite, Recharts, Plotly) was the cheaper option.
+  (Superseded by section 1's scope rule: polar is planned, GAPS 1.4b.)
 
