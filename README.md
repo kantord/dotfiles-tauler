@@ -668,4 +668,4 @@ gallery` writes a page showing them all); and fast-check properties
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Copyright 2026 Dániel Kántor. Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -426,7 +426,8 @@ function gridShapes(grid, axisTicks, scales, area, theme) {
 
 /* ---------- compile ---------- */
 
-// cyrb53 by bryc, public domain (https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js), seed 0:
+// cyrb53 (c) 2018 bryc, public domain or MIT, attribution appreciated
+// (https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js), seed 0:
 // 53 bits, so two different scenes practically never share a key (and a Picture).
 export function hash53(str) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
