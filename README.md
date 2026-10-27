@@ -669,3 +669,5 @@ gallery` writes a page showing them all); and fast-check properties
 ## License
 
 Copyright 2026 Dániel Kántor. Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+ggplot2, Observable Plot and other libraries are named only for comparison; this project is not affiliated with them.

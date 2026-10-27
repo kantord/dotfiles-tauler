@@ -45,7 +45,7 @@ either.
 
 - In-figure interactivity (hover, tooltips, pointer): a figure is a static Picture (ADR 0044),
   so the host owns interaction state. A `Plot` is a pure function of that state (a pointer, a
-  brush, a zoom window, a playback clock); the catalog's group d draws such states.
+  brush, a zoom window, a playback clock).
 - Animation: the same constraint; a motion example is a function of (changes so far, now).
 - A dataframe: data is plain JSON (ADR 0013).
 - Legends inside the Picture (5.10): legends are tauler JSX beside the figure, so swatches
@@ -115,6 +115,42 @@ Plot (marks + transforms + channels + scales). They are references, not template
 | The same `draw` runs in a page against a real `<svg>` | ADR 0026/0027 | `drawScene` uses plain d3-selection calls. |
 | Small figures (~250x110) fed by an Accumulator window | CONTEXT.md | Small defaults: 8px margins, few ticks, no legend. |
 | JSON has no Dates | ADR 0013 | Time scales coerce (5.6). |
+
+### Excluded dependencies
+
+`d3-hexbin` and `d3-sankey` are excluded: this library does not use them, and tauler's bundle is
+not extended to include them. Reasons (licence is not one: both are BSD-3-Clause, which is
+compatible with Apache-2.0):
+
+1. **The bundle is one pinned file.** tauler loads exactly one third-party d3 file for a
+   `D3Figure`: the d3 7.9.0 UMD build (`d3.min.js`, sha256-pinned), run in a private scope, with
+   a static list of 578 exports (`src/d3_figure/import.rs`, `assets.rs`). Neither package is in
+   it. Each would need its own pinned asset, fetch, wrapper and tests in tauler (a separate
+   repository), and load time in a runtime about 12 times slower than Node.
+2. **Both are frozen.** `d3-hexbin` 0.2.2 was released in 2017 and `d3-sankey` 0.12.3 in 2019;
+   neither has had a release since. `d3-sankey` depends on `d3-array` 1 to 2 and `d3-shape`
+   1.2, older majors than d3 7.9 ships, and running it against d3 7's versions is untested.
+3. **They provide little.** About 60 lines of hexagon maths and about 50 lines of flow layout.
+
+Acknowledged consequences:
+
+1. **This library owns that code,** with its tests, edge cases and fixes, and receives no
+   upstream fixes. The flow layout must handle what `d3-sankey` handles (cycles, node alignment,
+   relaxation iterations) or document what it does not. That behaviour is specified by example
+   g42 in `charts/GAP-EXAMPLES.md`, written from the requirement, not from `d3-sankey`'s code.
+2. **Hexbin is a data-space statistic,** cells with counts computed before the scales and drawn
+   by a generic polygon mark, not a pixel-space layout. Cells are regular hexagons on screen only
+   approximately, unless the statistic is given the plot's pixel width and height (it can be,
+   since statistics run in the layout, where those are known). So hexbin does not justify a
+   stage after the scales (GAPS 1.3).
+3. **Flow diagrams need the curved-link and ribbon pieces** (GAPS 3.9) and a layout statistic
+   written here (GAPS 2.2).
+4. **Users cannot import these packages either:** tauler resolves only `d3` (and `linkedom`)
+   for a `D3Figure`. A layout author who wants one has the same option: write it.
+5. **The same test applies to any other module outside the 578 exports:** it is not used unless
+   tauler's bundle changes, so a feature that needs one is built here or waits for a decision
+   about the bundle.
+6. **Library code for both is written here** (GAPS 3.11 and 2.2).
 
 Vocabulary follows CONTEXT.md: an **Accessor** names a data part; a *channel* is the role an
 accessor plays. Avoid "encoding", "aesthetic", and names clashing with tauler (`Tick`, `window`).
@@ -476,10 +512,11 @@ found: box whiskers ending inside the box (hinges now bound them, as in ggplot2)
 `bin().thresholds(1)` returning infinite edges; d3's `nice()` shrinking a domain whose span is
 at float precision (now undone when it would cut data off).
 
-### 7.2 Edge cases from Observable Plot's gallery
+### 7.2 Edge cases
 
-`charts/test/grammar/edge-cases.test.jsx` reproduces, with made-up examples, edge cases found
-by reading Observable Plot's test gallery (`test/plots`, 371 cases).
+`charts/test/grammar/edge-cases.test.jsx` reproduces edge cases found by stress-testing, each with
+its own made-up data. Scenarios were chosen after reading Observable Plot's public test gallery
+for ideas; no code or data was taken from it.
 
 | Edge case | Before | Now |
 |---|---|---|
@@ -497,6 +534,18 @@ Open (decisions, not bugs): numeric years format as `2,020` (d3's default groupi
 `text="field"` is literal text, where Observable Plot reads a field; an ordinal palette repeats
 past its length (six colours in `chartTheme`). Not built yet (scope rule, section 1): polar,
 multi-line text. Interaction stays a non-goal. Geo and trees are marks (5.12).
+
+### 7.3 The gap example suite
+
+Every gap found by stress-testing the library, feature gaps and ergonomics gaps alike, has one
+minimal, seeded example in `charts/test/gaps/`, specified by a row in `charts/GAP-EXAMPLES.md`.
+An open gap is a `test.fails` (red first) that also asserts its ergonomics constraint (raw input
+data, no hand-set margin, and so on); closing the item turns it green. A docs test fails if a
+row has no example.
+
+The scenarios were chosen after reading the public example galleries of other charting libraries
+(Observable Plot, and several chart-component catalogs) to see which problems come up. The
+examples themselves use invented data, and no code, data or text was copied from them.
 
 ## 8. Roadmap and acceptance tests
 
@@ -588,9 +637,9 @@ scales, function scales, custom-key training, `sqrt`.
   labelled `%b %-d` whatever their precision, a calendar leftover (now d3's multi-scale time
   format, rather than v4's `String`, which prints a long timezone string). Three coverage
   fixtures now snapshot their geometry, not just their shape counts.
-- Observable Plot gallery pass (7.2): fixed NaN stacking, array channels, multi-stop colour
+- Stress-test pass (7.2): fixed NaN stacking, array channels, multi-stop colour
   ramps (one polylinear scale replaces the sequential/diverging split), named curves, time bins
-  and long-label overflow. All are made-up examples; nothing is copied from the gallery.
+  and long-label overflow. All are made-up examples.
 - Trees and maps reversed from non-goals to marks (5.12) at the user's request: d3's layouts
   and projections do the work, and `defineMark` already hands marks the pixel area, so the only
   core change is `ctx.projection`. Polar stays parked: unlike these, it needs every mark to map

@@ -7,26 +7,27 @@ the **future only**. Examples are described, not copied; tests use invented, see
 
 Each item has a requirement, use cases, gap/challenge, **depends on**, and a **done when** test
 that fails first (a `test.fails` or a stub-proof assertion, never a bare `typeof` check). Every
-done-when also includes: the SPEC section is updated and the item is deleted from this file, in
-the same commit. "Precondition" means a piece of evidence or design that must exist before
+done-when also includes: the item's gap examples in `charts/GAP-EXAMPLES.md` (their `gNN` ids
+are listed there) turn green, the SPEC section is updated, and the item is deleted from this
+file, in the same commit. "Precondition" means a piece of evidence or design that must exist before
 building, never a reason to descope (SPEC 1, scope rule).
 
 ## Order of work and dependencies
 
 | Step | Items | Why here |
 |---|---|---|
-| A. Safety net | 0.1, 0.2, 0.3, A.4 | bug and engine risks first; tests lock in behaviour before any refactor |
+| A. Safety net | 0.1, 0.2, 0.3, A.4, A.5 | bug and engine risks first; tests lock in behaviour; the gap suite makes every later item red first |
 | B. Refactor | 0.4 | no behaviour change; every later item lands in a named file or stage |
-| C. Small and independent | 3.1, 3.3, 3.4a, 1.4a | each has a failing test or a clear bug; none needs a new stage |
+| C. Small and independent | 3.1, 3.3, 3.4a, 1.4a, 1.5a, 1.7a, 3.12 | each has a failing test or a clear bug; none needs a new stage |
 | D. Encoding channels | 1.1, 2.1 | one concept; 2.1 is its first consumer |
 | E. Built from existing pieces | 3.9, 3.8a, 2.2 | need 3.1 or 3.9 as stated per item |
 | F. Large designs, with preconditions | 1.3, 3.4b, 1.4b, 1.5, 1.6, 3.8b, 1.7, 2.3 | each begins with its named precondition |
-| G. Any time | 3.2, 3.5, 3.6, 3.7, 3.10 | independent; each names the user chart that needs it (3.10 lands with the items it covers) |
+| G. Any time | 3.2, 3.5, 3.6, 3.7, 3.10, 3.11, 3.13, 3.14 | independent; each names the user chart that needs it (3.10 lands with the items it covers) |
 
 Dependency lines: 3.1 before 2.2; 3.9 before 3.8a and 2.2; 1.6 before 3.8b; 1.4b only for the
 sunburst case of 3.8a; 1.1 before 2.1; 1.4a before 1.3 (pixel fields go through `ctx.point`);
-1.3 before 3.4b and before hexbin-style layouts; 3.8b after 3.8a and 1.6; 1.5 before 2.3 and
-before 3.6 arrowheads.
+1.3 before 3.4b; 3.11 before nothing (hexbin is a data-space statistic and does not need 1.3);
+3.8b after 3.8a and 1.6; 1.5 before 2.3 and before 3.6 arrowheads.
 
 ## Consolidation: every new concept, in one table
 
@@ -97,9 +98,7 @@ redesign.
 ### A.4 Tests for behaviour that works today
 - **Requirement:** nothing that works today can regress during the refactor.
 - **Use cases:** step B.
-- **Gap/challenge:** the catalog already exercises several of these (streamgraph `21`, contours
-  `38` and `39`, regression `31`, a county choropleth with `d3.geoAlbersUsa()` in `109`, facets
-  `facets-anscombe` and `51`, a route map `105`): confirm each before writing a duplicate, and
+- **Gap/challenge:** confirm each behaviour is not already tested before writing a duplicate, and
   keep only what is not covered. Ten behaviours (plus the docs test), one test each, in `charts/test/works-today.test.jsx` with
   invented data and one SVG fixture per seam, not per option: (1) stack offsets that centre
   around a moving baseline; (2) contour lines and filled contours from a grid, as a custom mark;
@@ -112,6 +111,18 @@ redesign.
   that fails if a `GAPS N.N` reference in the SPEC does not resolve to a heading in this file.
 - **Depends on:** nothing.
 - **Done when:** the eleven tests exist and pass.
+
+### A.5 The gap example suite
+- **Requirement:** every gap found while stress-testing the library has one minimal example that
+  fails today and turns green when the gap closes.
+- **Use cases:** a red-first target for every item; a record of ergonomics gaps that a pass/fail
+  feature test would miss.
+- **Gap/challenge:** stress-testing found both feature gaps and ergonomics gaps (hand-set
+  margins, pre-sorted rows, background-coloured "hidden" lines, repeated frame props).
+  `charts/GAP-EXAMPLES.md` is the brief: one row per gap, with the assertion each example makes.
+- **Depends on:** nothing.
+- **Done when:** `charts/test/gaps/` holds an example per row and a docs test fails if a row has
+  none (done); each example turns green with its item.
 
 ## Step B: refactor, no behaviour change
 
@@ -201,6 +212,38 @@ redesign.
 
 ---
 
+### 1.5a Style passthrough on the built-in marks
+- **Requirement:** every style prop an author can reasonably set on a shape reaches it.
+- **Use cases:** dashed strokes; stroke opacity; font weight; per-corner rounding; `Arc` pad angle
+  and corner radius; `currentColor`.
+- **Gap/challenge:** `Rect`, `Line`, `Text` and `Arc` ignore some of these (the exploration needed a
+  custom mark to dash a bar). A shared style table per shape kind, applied by `drawScene`,
+  with `Arc` gaining `padAngle` and `cornerRadius`. Cheapest fix with the biggest effect.
+- **Depends on:** nothing.
+- **Done when:** g07.
+
+### 1.7a Axis chrome options
+- **Requirement:** an axis can hide its line and ticks, and a title and its room are options.
+- **Use cases:** minimal cards with only labels; titled axes; any background colour.
+- **Gap/challenge:** the only way to hide an axis line is to paint it in the background colour,
+  which breaks on any other background (a defect). Add `Axis line={false} tickSize={0}` and a
+  `label` (title) option whose room is taken from the margin automatically.
+- **Depends on:** nothing.
+- **Done when:** g09, g10.
+
+### 3.12 Stack and dodge options
+- **Requirement:** the order, offset and anchor of stacks and the order of dodged series are
+  options on `stack()`/`dodge()`.
+- **Use cases:** a centred stream layout; a diverging stack; a chosen layer order; the same
+  position shared by a line and an area drawn over one stack.
+- **Gap/challenge:** `stack()` has only `zero` and `expand`, and order comes from the row order
+  of the input, so authors pre-sort or reverse rows. Pass through d3's offset and order names
+  (`stackOffset*`, `stackOrder*`), add an `anchor` for a series placed across zero, and an
+  explicit series order for `dodge()`. Decide whether layered marks can share one position
+  declaration.
+- **Depends on:** nothing.
+- **Done when:** g16, g17, g18, g19, g21.
+
 ## Step D: encoding channels
 
 ### 1.1 Open scale types and mark-declared channels
@@ -286,11 +329,14 @@ redesign.
   normalisation (3.1) and a `Line` over a band axis of variable names; per-axis ticks are
   ordinary `Text` and `Link` marks fed by data. A flow diagram is a layout statistic (nodes and
   links to rows, in unit space) drawn with `Rect` and the ribbon from 3.9. The flow layout
-  algorithm is not in d3's default bundle; the catalog already writes one in about 50 lines
-  (`sankeyLayout`, `b.test.jsx`), so write it in the library. Several named scales per chart
-  stay tier 2 (real dual axes only; see 1.7).
+  algorithm is excluded as a dependency (SPEC "Excluded dependencies"), so the library owns it:
+  a layout of this kind is about 50 lines. It is written from scratch from example g42, not from
+  `d3-sankey`'s code, and must handle cycles, uneven nodes, node
+  alignment and relaxation iterations, or say what it does not. Several named scales per chart stay tier 2 (real dual axes only; see 1.7).
 - **Depends on:** 3.1, 3.9.
-- **Done when:** both kinds render from plain data and no file outside marks and stats changes.
+- **Done when:** both kinds render from plain data and no file outside marks and stats changes;
+  the flow layout has tests for a cyclic input, node alignment and the iteration count, and the
+  cases it does not handle are listed in SPEC.
 
 ---
 
@@ -299,8 +345,9 @@ redesign.
 ### 1.3 A stage after the scales are built
 - **Requirement:** layouts that need pixel positions can run, and the values they create then
   train scales.
-- **Use cases:** hexagonal and other spatial binning; jitter on continuous axes; any layout
-  whose result changes with plot size.
+- **Use cases:** jitter on continuous axes; any layout whose result changes with plot size and
+  whose created values must train a scale shared with another mark. Hexagonal binning is not
+  one: it is a data-space statistic (3.11, SPEC "Excluded dependencies").
 - **Gap/challenge:** positions run before scales and cannot see pixels. Mechanism: a function
   tagged `stage: 'pixel'` goes in `position`; order is: scales train, the pixel stage runs,
   created channels train **non-position** scales only (margins are already fixed), then render.
@@ -310,8 +357,9 @@ redesign.
   `scales`, `area`; writes `rows` (adds the pixel fields and created fields) and retrains and
   rebuilds non-position scales in `domains` and `scales`. Layouts that only move things
   (beeswarm, label avoidance) stay marks.
-- **Precondition:** a concrete chart that 1.1 cannot express, such as a pixel-dependent hexbin,
-  written first as a failing test.
+- **Precondition:** a concrete chart that neither 1.1 nor a statistic given the plot's pixel
+  size can express, written first as a failing test. Hexbin does not qualify (3.11); this item
+  may turn out unnecessary, and then it is closed, not built.
 - **Depends on:** 1.1, 1.4a, 0.3, 0.4.
 - **Done when:** the same data at two widths gives identical data-space bins and different
   pixel-space cell counts; a pixel-stage count colours a scale shared with a second mark; a
@@ -327,8 +375,9 @@ redesign.
   axes), and a non-rectangular clip (`scene.clip` is a rectangle). Densify cost is controlled as
   in 0.3.
 - **Precondition:** a design note signed off by the owner, plus a prototype of one chart that
-  has survived a review. Two polar prototypes already exist in `charts/test/catalog/`
-  (`polar-c.jsx`, `polar-f.jsx`; see "Evidence from the chart catalog"); the note reconciles them.
+  has survived a review. Two shapes are candidates: frame props repeated on every mark, or one
+  shared `polar()` object passed to each; the note picks one (the second is nearer the coord
+  contract in 1.4a).
 - **Depends on:** 1.4a, 0.3, 0.4.
 - **Done when:** one data set renders as a bar chart and a coxcomb by changing the coordinate
   only, the wedge path count equals the bar count, and each wedge's angle is proportional to its
@@ -352,6 +401,8 @@ redesign.
   has no layout (SPEC 9: a per-font width table).
 - **Precondition:** measured error of the width estimate against real rendered text for the
   fonts in use, which decides the table approach.
+- **Patent note:** automatic label placement and avoidance is an area with active patents (mostly
+  mapping vendors). Check before implementing it; wrapping and rotation are not affected.
 - **Depends on:** 0.4.
 - **Done when:** wrapped label boxes computed from `measure` stay inside the stated width and
   rotated label boxes do not intersect their neighbours.
@@ -369,8 +420,8 @@ redesign.
   styled and replaced.
 - **Use cases:** top and right axes, per-panel axes, axes inside the plot, polar axes, axis
   titles, second and third y axes.
-- **Gap/challenge:** axes and grid are fixed (x bottom, y left; SPEC 5.7). The catalog adds axis
-  titles and extra y axes as test-local marks (`AxisTitles`, `OwnY`). Several axes per chart
+- **Gap/challenge:** axes and grid are fixed (x bottom, y left; SPEC 5.7). Axis titles and
+  extra y axes have to be hand-built as custom marks. Several axes per chart
   need named scales (SPEC 5.6, tier 2) or marks that bring their own scale.
 - **Precondition:** one failing test that needs an axis the fixed layout cannot draw.
 - **Depends on:** 0.4, 1.4b.
@@ -441,66 +492,92 @@ redesign.
 
 ---
 
-## Evidence from the chart catalog (`charts/test/catalog/`, read 2026-10-27)
+## Findings from stress-testing
 
-What it is: about 190 examples in six groups (a: cartesian core, b: distributions, spatial,
-network and multivariate, c: polar, hierarchy and maps, d: interaction and motion, e: themes
-and dashboards, f: pie, radar and radial), rebuilt on made-up seeded data, one test per example,
-each drawing kept as an SVG. No `test.fails` or `test.skip`: everything is built, and the
-whole suite passes. Everything the core lacks is built as a mark local to the test file, on
-`defineMark`, and the file headers list it:
+Everything below could be built on `defineMark` with hand work; the gap is reuse, not
+feasibility. Building a wide range of charts turned up these recurring workarounds:
 
-- axis titles; second and third y axes (`OwnY`); in-picture legends and tooltips;
-- Delaunay, grid and density contours, vectors and arrows, hexbin, swarm, violin, tick, and
+- axis titles; second and third y axes; in-picture legends and tooltips;
+- Delaunay, grid and density contours, vectors and arrows, hexbin, swarm, violin, tick and
   flow (Sankey) marks;
-- polar maths repeated per mark (`polar-c.jsx`, 268 lines; `polar-f.jsx`, 225 lines);
+- polar maths repeated per mark;
 - gradients, done by layering translucent slices because the scene has no `<defs>`.
 
 What this changes in the plan:
 
-- **Nothing is infeasible; the gap is reuse.** Each recipe is a test-local mark, so a second
-  chart cannot share it. Item 3.10 decides which become library pieces.
-- **1.4b:** two divergent polar designs already exist: `polar-c.jsx` repeats frame and
-  `angleDomain`/`radiusDomain` props on every mark, and `polar-f.jsx` passes one shared
-  `polar()` object to each. The second is nearer the coord contract in 1.4a. The design note
-  must reconcile them.
-- **1.3:** the catalog's hexbin is a self-contained mark that colours by its own count and
-  works today. So 1.3 stays unjustified until a chart needs a pixel-derived value to train a
-  scale shared with a second mark (the precondition already says this).
+- **Nothing is infeasible; the gap is reuse.** Each recipe is a private mark, so a second chart
+  cannot share it. Item 3.10 decides which become library pieces.
+- **1.4b:** polar can repeat frame props on every mark or pass one shared `polar()` object to
+  each. The second is nearer the coord contract in 1.4a. The design note must reconcile them.
+- **1.3:** a hexbin mark that colours by its own count works today, and a data-space hexbin
+  statistic would too (3.11). So 1.3 stays unjustified until a chart needs a pixel-derived value
+  to train a scale shared with a second mark.
 - **1.5:** gradients are worked around by stacking translucent slices; this is the use case.
 - **1.7:** axis titles and extra y axes have no library support (use cases added there).
-- **2.2:** the flow layout is about 50 lines in `b.test.jsx` (`sankeyLayout`), because
-  d3-sankey is not in d3's bundle; write it in the library rather than import. A parallel
-  coordinates example (`27`) exists.
-- **Interaction:** group d draws each interaction as a pure function of an explicit state
+- **2.2:** a flow layout is about 50 lines, and d3-sankey is not in d3's bundle; write it in the
+  library rather than import. A parallel-coordinates chart is buildable today.
+- **Interaction:** each interaction can be drawn as a pure function of an explicit state
   (pointer, hidden series, brush, zoom window, playback clock). The library needs no change to
-  be driven by a host that owns the state; SPEC's non-goal wording was updated to say so.
-- **Provenance:** example slugs and titles mirror upstream catalogs (TanStack Charts, shadcn,
-  Recharts, ECharts); data is made up and code is original. Record the origin the way SPEC 7.2
-  does ("challenge found by reading"), keep the data synthetic, and do not copy upstream code.
+  be driven by a host that owns the state; SPEC's non-goal wording says so.
 
-### 3.10 Promote catalog marks to the library, or document them as recipes
-- **Requirement:** a mark that works in a catalog test is either reusable by everyone or
+### 3.11 Hexbin as a data-space statistic
+- **Requirement:** two-dimensional density as hexagonal cells, with counts that colour a scale
+  like any other field.
+- **Use cases:** dense scatter data in a small figure; spatial density.
+- **Gap/challenge:** `d3-hexbin` is excluded (SPEC "Excluded dependencies"), so the library
+  writes the hexagon maths (about 60 lines). Make it a
+  statistic: `hexbin(data, { x, y, binWidth, width, height })` returns cell rows (`cx`, `cy`,
+  `count`, corner points) computed before the scales, so `count` trains a colour scale as a
+  normal field. Cells are regular on screen only approximately, unless `width` and `height`
+  (the plot's pixel size, known in the layout) are given; margins are not accounted for. Drawn
+  by a generic polygon mark (shared with contours and Delaunay cells, 3.10).
+- **Depends on:** 3.10 for the polygon mark.
+- **Done when:** the cell counts sum to the row count, `count` colours a scale shared with a
+  second mark, and a hexbin chart is the statistic plus a generic mark.
+
+### 3.13 Statistic-plus-mark composites and reference lines
+- **Requirement:** common derived charts are one statistic plus ordinary marks, and reference
+  lines are one mark.
+- **Use cases:** a fitted line with a band; the difference between two series; a staircase of
+  running totals; a box with whiskers; interval ticks; horizontal and vertical reference lines.
+- **Gap/challenge:** each has to be built by hand today (least squares inline, crossing
+  interpolation, a hand-made box from four marks). `boxStats` and `kde` show the pattern.
+  Add statistics (`regress`, `difference`, `waterfall`) and `ruleX`/`ruleY`/`tickX`/`tickY`
+  marks, each a thin variant of an existing one.
+- **Depends on:** 3.1 (the rolling and group helpers).
+- **Done when:** g25, g26, g27.
+
+### 3.14 Beeswarm
+- **Requirement:** points dodged so none overlap, in a small figure.
+- **Use cases:** a distribution of single values per category.
+- **Gap/challenge:** it needs pixel positions (radius against position), so it is a mark or a
+  pixel-stage position (1.3), not a data-space position. Decide which, and document it.
+- **Depends on:** 1.3 if it becomes a position.
+- **Done when:** g45.
+
+### 3.10 Promote recurring custom marks to the library, or document them as recipes
+- **Requirement:** a mark that works as a custom mark is either reusable by everyone or
   documented as a recipe; none stays a private copy.
 - **Use cases:** a Delaunay mesh, contours, density contours, vectors and arrows, hexbin, swarm,
   violin, tick marks, flow diagrams, axis titles, an in-picture legend, a tooltip.
-- **Gap/challenge:** these are local to `b.test.jsx`, `e.test.jsx` and the polar files. Apply the
+- **Gap/challenge:** these exist only as hand-built marks. Apply the
   fewest-pieces test to each: promote only where it is a general piece (a statistic plus a
   generic mark, or an input to 1.5 to 1.7), and leave the rest as recipes. Several are
-  already covered by items here (vectors 3.6, hexbin 1.3, flows 2.2, axis titles 1.7), so they
+  already covered by items here (vectors 3.6, hexbin 3.11, flows 2.2, axis titles 1.7), so they
   land with those items, not separately.
 - **Depends on:** 0.4, and the item that covers each mark.
-- **Done when:** every catalog-local mark is either exported from the library with its
-  catalog test unchanged, or listed in SPEC as a recipe with a link to its test.
+- **Done when:** for each such mark, its gap example (g33 to g45) is green because the library
+  provides it, or the SPEC lists it as a recipe and its example passes using only public pieces.
 
 ## To review (not yet decided)
 
 - Legends inside the Picture (SPEC 5.10): the stated reason is design (swatches cannot drift),
-  not a host constraint, and the catalog draws legends in the picture as a mark. Decide whether
+  not a host constraint, and a legend can be drawn in the picture as a custom mark. Decide whether
   the non-goal stands.
 - SPEC 7.2 open decisions: years print as `2,020`; an ordinal palette repeats past six colours;
   `Text text="field"` is literal text.
-- `d3-hexbin` and the flow-layout package are not in d3's default bundle (SPEC 5.4).
+- (decided) `d3-hexbin` and `d3-sankey` are excluded, with consequences recorded in SPEC
+  "Excluded dependencies"; items 2.2 and 3.11 carry them.
 
 ## Non-goals (host constraints only)
 

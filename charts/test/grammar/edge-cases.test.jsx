@@ -1,6 +1,7 @@
-// Edge cases found by reading Observable Plot's gallery for what this library might not handle.
-// Every example here is made up (own data, own scenario) to reproduce the edge case, not the
-// gallery's chart. Drawings are kept in __svg__/ like the grammar cases.
+// Edge cases found by stress-testing what this library might not handle, after reading
+// Observable Plot's public gallery for ideas.
+// Every example here is made up (own data, own scenario). Drawings are kept in __svg__/ like
+// the grammar cases.
 import { test, expect, beforeEach } from 'vitest';
 import * as d3 from 'd3';
 import { drawFigure, figureKeys, resetFigures } from '../../../test/tauler.js';

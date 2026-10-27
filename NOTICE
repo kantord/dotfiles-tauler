@@ -1,3 +1,6 @@
 Copyright 2026 Dániel Kántor
 
 Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes a small hash function (cyrb53, charts/core.jsx) by bryc,
+(c) 2018, public domain or MIT, https://github.com/bryc/code
