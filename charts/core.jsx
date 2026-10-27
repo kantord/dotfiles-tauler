@@ -56,7 +56,10 @@ function inherit(inherited, own) {
   for (const c in channels) if (channels[c] === null) delete channels[c];
   return channels;
 }
-const accessor = v => typeof v === 'function' ? v : typeof v === 'string' ? d => d[v] : () => v;
+// A channel is a field name, a function of the datum, an array (one value per row: columnar
+// data), or a constant.
+const accessor = v => typeof v === 'function' ? v : typeof v === 'string' ? d => d[v]
+  : Array.isArray(v) ? (d, i) => v[i] : () => v;
 // ±Infinity is a constant too: the plot's edge.
 const isConstant = v => typeof v === 'number' || v instanceof Date;
 const keyOf = v => v instanceof Date ? +v : v;
@@ -96,6 +99,9 @@ function evaluate(layer, options) {
     data = [{}];
     layer.channels = Object.fromEntries(own);
   }
+  // Columns with no rows: one row per array element; the datum is the index.
+  const columns = Object.values(layer.channels).filter(Array.isArray);
+  if (layer.data === undefined && columns.length) data = d3.range(d3.max(columns, c => c.length));
   const accessors = Object.entries(layer.channels).map(([c, v]) => [c, accessor(v)]);
   layer.rows = data.map((d, i) => {
     const row = { d };
@@ -140,7 +146,7 @@ export const stack = ({ by, along = 'y', groupBy, offset = 'zero' } = {}) => (ro
     const sorted = d3.sort(pile, r => order.indexOf(keyOf(series(r))));
     let up = 0, down = 0;
     for (const r of sorted) {
-      const v = r[along] ?? 0;
+      const v = Number.isFinite(r[along]) ? r[along] : 0;   // null, NaN: nothing to pile
       if (v >= 0) { r[start] = up; r[end] = up += v; } else { r[start] = down; r[end] = down += v; }
     }
     const total = up - down;
@@ -226,12 +232,12 @@ export function colorScale(domain, theme, range = theme.palette) {
 function buildScale({ type, domain, opt, padding, nice }, range, theme) {
   if (type === 'ordinal') return colorScale(domain, theme, opt.range);
   if (type === 'sequential') {
+    // Any number of stops: at the domain's values when it has one per stop (three around a
+    // pivot make it diverging), else spread evenly over its extent. Clamped, like d3's own.
     const stops = opt.range ?? [d3.interpolateRgb(theme.line, theme.palette[0])(0.15), theme.palette[0]];
-    if (stops.length === 3) {
-      const [low, high] = d3.extent(domain), middle = domain.length === 3 ? domain[1] : (low + high) / 2;
-      return d3.scaleDiverging([low, middle, high], d3.piecewise(d3.interpolateRgb, stops));
-    }
-    return d3.scaleSequential(domain, d3.interpolateRgb(...stops));
+    const [low, high] = d3.extent(domain);
+    const at = domain.length === stops.length ? domain : stops.map((_, i) => low + (i / (stops.length - 1)) * (high - low));
+    return d3.scaleLinear(at, stops).interpolate(d3.interpolateRgb).clamp(true);
   }
   const scale = type === 'band' ? d3.scaleBand(domain, range).paddingInner(padding).paddingOuter(padding / 2)
     : type === 'time' ? d3.scaleTime(domain, range)
@@ -289,6 +295,14 @@ function tickLabels(scale, axis, length, measure) {
   return labels;
 }
 
+// `label`, shortened with an ellipsis until it measures at most `room` px.
+function fit(label, room, measure) {
+  if (measure(label, FONT_SIZE) <= room) return label;
+  let cut = label;
+  while (cut && measure(cut + '…', FONT_SIZE) > room) cut = cut.slice(0, -1);
+  return cut.trimEnd() + '…';
+}
+
 // The margins the axes' labels need, and those labels. Labels are computed once, against a
 // scale of the estimated length: tick values do not depend on the range, only their pixels do.
 // `fixed` (the `margin` prop) overrides any side.
@@ -309,7 +323,10 @@ function margins(axes, domains, width, height, env, fixed = {}) {
         margin.right = Math.max(margin.right, Math.ceil(env.measure(labels.at(-1), FONT_SIZE) / 2) + 2);
       }
     } else {
-      margin.left = Math.max(margin.left, Math.ceil(TICK_SIZE + TICK_PADDING + widest) + 2);
+      // Labels take at most a third of the width; longer ones are cut with an ellipsis.
+      const room = width / 3;
+      if (widest > room) for (const t of ticks.get(axis)) t.label = fit(t.label, room, env.measure);
+      margin.left = Math.max(margin.left, Math.ceil(TICK_SIZE + TICK_PADDING + Math.min(widest, room)) + 2);
     }
   }
   return { margin: { ...margin, ...fixed }, ticks };
@@ -353,7 +370,20 @@ function context(layer, scales, area, env) {
       return typeof v === 'function' ? v(row.d) : typeof v === 'string' ? row.d?.[v] : v;
     },
     measure: env.measure,
+    projection: env.projection,   // a d3-geo projection fitted to the area, when the Plot has one
   };
+}
+
+// The Plot's `projection` (a d3-geo name such as 'equal-earth', or a projection) fitted to the
+// plot area around `fit` (GeoJSON; the whole globe by default).
+function fitProjection({ projection, fit }, area) {
+  let p = projection;
+  if (typeof p === 'string') {
+    const make = d3['geo' + p.replace(/(?:^|-)(\w)/g, (_, c) => c.toUpperCase())];
+    if (!make) throw new Error(`Plot: d3 has no projection named '${projection}'`);
+    p = make();
+  }
+  return p.fitExtent([[area.left, area.top], [area.right, area.bottom]], fit ?? { type: 'Sphere' });
 }
 
 function axisShapes(axis, ticks, scales, area, theme) {
@@ -427,6 +457,7 @@ export function compile(props) {
   const area = { left: margin.left, top: margin.top, right: width - margin.right, bottom: height - margin.bottom };
   area.width = area.right - area.left; area.height = area.bottom - area.top;
 
+  if (props.projection != null) env.projection = fitProjection(props, area);
   const scales = {};
   if (domains.x) scales.x = buildScale(domains.x, [area.left, area.right], env.theme);
   if (domains.y) scales.y = buildScale(domains.y, domains.y.type === 'band' ? [area.top, area.bottom] : [area.bottom, area.top], env.theme);

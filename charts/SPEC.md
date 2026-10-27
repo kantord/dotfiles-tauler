@@ -13,8 +13,9 @@ as a tauler `<D3Figure>`. A user adds marks, statistics and positions without ed
 package. Nothing in core is specific to time series, calendars or any one widget.
 
 Non-goals: in-figure interactivity (a figure is a static Picture); animation; a dataframe;
-geographic projections; radar, Sankey, parallel coordinates (one scale per row is unsupported;
-use raw d3 in a D3Figure); legends inside the Picture (5.10).
+Sankey, parallel coordinates (one scale per row is unsupported; use raw d3 in a D3Figure);
+legends inside the Picture (5.10). Parked: polar coordinates (radar, coxcomb, sunburst), which
+need a coordinate stage (section 10). Trees and maps are marks (5.12).
 
 Reference points: ggplot2 (layer = data + mapping + stat + geom + position) and Observable
 Plot (marks + transforms + channels + scales).
@@ -92,7 +93,8 @@ shares them with the marks inside:
 </Plot>
 ```
 
-Channels (accessor = field name, function `(d, i) => v`, or a constant number/Date/±Infinity):
+Channels (accessor = field name, function `(d, i) => v`, an array with one value per row
+(columnar data; with no `data`, the arrays make the rows), or a constant number/Date/±Infinity):
 
 | Channel | Meaning | Scale |
 |---|---|---|
@@ -118,7 +120,7 @@ the `text` prop (constant or function); there is no `label` channel. Colours are
 
 | Mark | Draws | Rules |
 |---|---|---|
-| `Line` | one path per `group`/`color`; `closed` | x-ordered unless `sort={false}`; rows with a null `y` leave a gap; `curve`: `linear step-after monotone` |
+| `Line` | one path per `group`/`color`; `closed` | x-ordered unless `sort={false}`; rows with a null `y` leave a gap; `curve`: any d3 curve by name (`step-before`, `basis`, `catmull-rom`...) or a d3 curve |
 | `Area` | band between ends | vertical `x y1 y2` (or `y` alone: from 0); horizontal `y x1 x2`; hints 0 into the domain only when it fills from 0 |
 | `Rect` | rectangle | per axis: interval `a1,a2`; or a point `a`: on a band scale -> the band's extent (`inset` px off each side); on a continuous scale -> centred, `width` px (default 6). A `baseline` prop turns the single continuous point into `[baseline, v]`. |
 | `Bar` | = `Rect` with `baseline: 0` on its value axis | value axis is y, unless y is band (then x); the other axis follows the Rect rules, so bars over a time x are centred, `width` px |
@@ -140,7 +142,7 @@ band (box median).
 
 - `stack({ by = group ?? color, along = 'y', groupBy = 'x', offset = 'zero' | 'expand' })`
   writes `y1 y2` (`x1 x2` when `along: 'x'`). Rows sharing `groupBy` pile in first-seen `by`
-  order; negatives pile separately downward from 0; `expand` normalises to 1. For `Area`,
+  order; negatives pile separately downward from 0; null and NaN pile as 0; `expand` normalises to 1. For `Area`,
   missing `(x, by)` cells count as 0. Streamgraph and diverging (Likert) offsets are
   *recipes*: compute `y1 y2` with `d3.stack().offset(...)` in the layout and draw `Area`/`Rect`.
 - `dodge({ by = group ?? color, padding = 0.1 })` writes `u1 u2` (a fraction of the band, from
@@ -233,8 +235,9 @@ Inference reads *all* non-null values:
   continuous (bars), 0 when both are band (heatmap, Gantt); thin bars use `Rect inset`
 - `nice` applies to linear, log and time unless `domain` is set
 - log: any domain value <= 0 throws, naming the channel
-- `range`: ordinal -> array of colours; sequential -> `[c0, c1]` or `[c0, mid, c1]` (the
-  3-stop form is diverging, with `domain: [lo, pivot, hi]`); position scales rarely need one
+- `range`: ordinal -> array of colours; sequential -> any number of stops, placed at the
+  `domain`'s values when it has one per stop, else spread evenly (three around a pivot make it
+  diverging), clamped; position scales rarely need one
 - default `sequential` ramp: `interpolateRgb(mix(theme.line, theme.palette[0], 0.15), palette[0])`,
   so the low end stays visible against the background; y band runs top-down
 
@@ -247,7 +250,8 @@ but cannot overlay.
 
 `Axis { channel, ticks, format }`, `Grid { channel, ticks, tone }`. x at the bottom, y at the
 left. `ticks` is a count (default 1 per 90px on x, 42px on y, fixed 11px text) or an array of
-values; on a band axis a count picks every k-th label, and with no `ticks` the axis keeps every k-th
+values; a y axis's labels take at most a third of the width, longer ones are cut with `…`;
+on a band axis a count picks every k-th label, and with no `ticks` the axis keeps every k-th
 label with k the smallest that stops labels overlapping (by `measure` on x, the font size on y). `format` is a d3 format string or a
 function; on a band, Dates use d3's time-axis format at each value's precision (`02 PM`,
 `Sat 24`), anything else `String`. A `Grid` uses the ticks of its channel's `Axis` unless
@@ -278,6 +282,28 @@ drawing black.
 
 Not in the Picture. Export `colorScale(domain, theme)` (the function `Plot` itself uses), and
 draw the legend as ordinary tauler JSX beside the figure, so swatches cannot drift from the chart.
+
+### 5.12 Trees and maps
+
+Both are marks on `defineMark`; core adds only the projection.
+
+- **Trees** (`hierarchy.jsx`): `Treemap` (`tile`: squarify, binary, slice, dice, slice-dice),
+  `Tree` (`layout`: tree or cluster; root on the left, room kept for labels), `Pack`,
+  `Partition` (an icicle). The hierarchy comes from flat rows (ADR 0013): `path` ("a/b/c",
+  missing parents filled in) or `id` + `parent`; `value` sizes leaves; `label` is a value prop
+  (a node with no row shows its last path segment). Leaves are coloured by their branch below
+  the trunk unless they have `fill` or a `color` channel. Treemap shapes come in row order.
+  Labels are drawn only where they fit.
+- **Maps** (`geo.jsx`): `<Plot projection fit>`. `projection` is a d3-geo name
+  (`equal-earth`, `mercator`, `orthographic`...) or a projection object; core fits it to the
+  plot area around `fit` (GeoJSON, the whole globe by default) and hands it to marks as
+  `ctx.projection`. `Geo` draws one GeoJSON row per path (a `color` channel makes a
+  choropleth); `GeoDot` draws `lon`/`lat` points and skips ones the projection hides.
+  Polygons wound the RFC 7946 way (which d3-geo reads as "everything but this") are rewound
+  when they would cover more than a hemisphere.
+- **Cost:** a detailed map makes long paths, and the scene hash is O(drawing): a 3000-point
+  coastline measured 29 ms per Tick without a `key`, 0.4 ms with one. Maps should take a
+  `key` (5.11).
 
 ### 5.11 Key, determinism, cost
 
@@ -366,6 +392,28 @@ starting the first bin at the data's minimum. `charts/test/properties.test.js` (
 found: box whiskers ending inside the box (hinges now bound them, as in ggplot2); d3 7.9.0's
 `bin().thresholds(1)` returning infinite edges; d3's `nice()` shrinking a domain whose span is
 at float precision (now undone when it would cut data off).
+
+### 7.2 Edge cases from Observable Plot's gallery
+
+`charts/test/grammar/edge-cases.test.jsx` reproduces, with made-up examples, edge cases found
+by reading Observable Plot's test gallery (`test/plots`, 371 cases).
+
+| Edge case | Before | Now |
+|---|---|---|
+| NaN in a stacked value | the row's end was NaN; the pile below it was poisoned | piles as 0 |
+| channels as arrays (columnar data) | silently no rows | one row per element |
+| colour ramps of more than three stops | stops past the second silently ignored | all stops used |
+| curves beyond `linear step-after monotone` | threw "curve is not a function" | any d3 curve by name |
+| `bin` over timestamps | numeric, uneven edges | round time edges, as Dates |
+| long y-axis labels | plot area of negative width | labels cut to a third of the width |
+| log scale of one value; bars a day wide (`x2` accessor) | worked | kept as tests |
+| beeswarm; arrows | not built in | custom marks on `defineMark`, in the test (beeswarm needs pixels, so it is a mark, not a position) |
+| difference chart; ridgeline | not built in | plain data prep (`min` of two series; per-series baselines on one linear y) |
+
+Open (decisions, not bugs): numeric years format as `2,020` (d3's default grouping); `Text`'s
+`text="field"` is literal text, where Observable Plot reads a field; an ordinal palette repeats
+past its length (six colours in `chartTheme`). Still non-goals: polar, geo, interaction, trees,
+multi-line text.
 
 ## 8. Roadmap and acceptance tests
 
@@ -456,4 +504,12 @@ scales, function scales, custom-key training, `sqrt`.
   labelled `%b %-d` whatever their precision, a calendar leftover (now d3's multi-scale time
   format, rather than v4's `String`, which prints a long timezone string). Three coverage
   fixtures now snapshot their geometry, not just their shape counts.
+- Observable Plot gallery pass (7.2): fixed NaN stacking, array channels, multi-stop colour
+  ramps (one polylinear scale replaces the sequential/diverging split), named curves, time bins
+  and long-label overflow. All are made-up examples; nothing is copied from the gallery.
+- Trees and maps reversed from non-goals to marks (5.12) at the user's request: d3's layouts
+  and projections do the work, and `defineMark` already hands marks the pixel area, so the only
+  core change is `ctx.projection`. Polar stays parked: unlike these, it needs every mark to map
+  (x, y) jointly, which is a coordinate stage (as in ggplot2, G2, ECharts, and Observable
+  Plot's projections); marks-only polar (Vega-Lite, Recharts, Plotly) was the cheaper option.
 

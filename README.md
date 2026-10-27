@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Text, Arc, Layer, Scale, Axis, Grid, stack, dodge, defineMark, colorScale, chartTheme, bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Text, Arc, Layer, Scale, Axis, Grid, stack, dodge, defineMark, colorScale, chartTheme, bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -35,7 +35,7 @@ plus the two things it says have no kind at all:
 |------------|---------|----------------------|--------------------------------------------------|
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
-| `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `theme.jsx`, `stats.jsx` |
+| `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `hierarchy.jsx`, `geo.jsx`, `theme.jsx`, `stats.jsx` |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `lib/`     | —       | plain functions, no component | `hueFor.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
@@ -330,7 +330,8 @@ While the first reading is still loading, or if a fetch fails, shows `…` and
 ## Charts
 
 A grammar of graphics on d3, drawn as tauler `<D3Figure>`s. A `Plot` takes
-marks (`Line`, `Area`, `Rect`, `Bar`, `Dot`, `Link`, `Text`, `Arc`) and pieces
+marks (`Line`, `Area`, `Rect`, `Bar`, `Dot`, `Link`, `Text`, `Arc`; trees and maps
+below) and pieces
 (`Layer`, `Scale`, `Axis`, `Grid`) as JSX children. Needs tauler 0.7.0 or later
 (`D3Figure`); tauler downloads d3 itself. The design and its decisions are in
 [`charts/SPEC.md`](charts/SPEC.md).
@@ -369,7 +370,8 @@ import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler"
 ```
 
 - **Channels** are `x x1 x2 y y1 y2 color group`: a field name, a function of
-  the datum, or a constant (`±Infinity` is the plot's edge). A mark inherits
+  the datum, an array with one value per row (columnar data), or a constant
+  (`±Infinity` is the plot's edge). A mark inherits
   the Plot's (or its `Layer`'s) channels, except that setting any channel of
   an axis drops the inherited ones of that axis; `color={null}` drops one.
 - **Marks.** `Rect` takes an interval (`x1 x2`) or a point per axis: on a band
@@ -385,8 +387,9 @@ import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler"
   `linear`, anything else → `band`; numeric `color` → sequential. JSON has no
   Dates, so ISO strings need `<Scale channel="x" type="time" />`, and integer
   categories (hours, weeks) need `type="band"`. `Scale` also takes `domain`,
-  `range` (colours for `color`; three stops make it diverging), `padding`, and
-  `type="log"`.
+  `range` (colours for `color`, any number of stops; three around a pivot make
+  it diverging), `padding`, and `type="log"`. `curve` takes any d3 curve name
+  (`"monotone"`, `"step-before"`, `"basis"`...).
 - **Statistics** are plain `data -> data` functions, called before the `Plot`: `bin`, `bin2d`,
   `group`, `rolling`, `cumsum`, `kde`, `ecdf`, `boxStats`.
 - **Your own marks:** `defineMark(name, { render(rows, ctx) { return shapes } })`.
@@ -394,6 +397,15 @@ import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler"
   `props`, `resolve` (a style prop), `field` (a value prop) and `measure`; a
   shape is `{ t: "rect" | "circle" | "line" | "path" | "text", ...SVG attributes in camelCase }`.
   `Arc` in `charts/marks.jsx` is a complete example.
+- **Trees:** `Treemap`, `Tree`, `Pack` and `Partition` read a hierarchy from flat rows:
+  `path` (`"home/media/photos"`, parents filled in) or `id` + `parent`, sized by `value`,
+  named by `label`. `<Plot width={248} height={100} data={du}><Treemap path="dir"
+  value="mb" label={d => d.dir.split("/").at(-1)} /></Plot>` is a disk-usage map.
+- **Maps:** give the Plot a `projection` (`"equal-earth"`, `"mercator"`, a d3-geo
+  projection) and optionally `fit` (GeoJSON to frame). `Geo` draws GeoJSON rows (a
+  `color` channel makes a choropleth); `GeoDot` draws `lon`/`lat` points. Detailed
+  shapes are expensive to hash every Tick (a 3000-point coastline: 29 ms), so give a map
+  Plot a `key` (0.4 ms), changed when the data does.
 - **Legends** are ordinary tauler JSX beside the figure; `colorScale(keys,
   theme)` gives the same colours the Plot uses.
 - `width` and `height` are required numbers; `margin={{ left: 4 }}` fixes a

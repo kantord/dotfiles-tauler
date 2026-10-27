@@ -2,8 +2,14 @@
 import * as d3 from 'd3';
 import { defineMark, top, text, FONT_SIZE } from './core.jsx';
 
-const CURVES = { linear: d3.curveLinear, 'step-after': d3.curveStepAfter, monotone: d3.curveMonotoneX };
-const curve = name => CURVES[name ?? 'linear'] ?? name;
+// A d3 curve by name ('step-after' is d3.curveStepAfter, 'monotone' d3.curveMonotoneX), or a
+// d3 curve itself.
+function curve(name = 'linear') {
+  if (typeof name === 'function') return name;
+  const found = name === 'monotone' ? d3.curveMonotoneX : d3['curve' + name.replace(/(?:^|-)(\w)/g, (_, c) => c.toUpperCase())];
+  if (!found) throw new Error(`Line/Area: d3 has no curve named '${name}'`);
+  return found;
+}
 
 // One path per group and colour, points in pixel order along `along` unless `sort={false}`.
 // Styles read the first real row: stack() may have added rows with no datum.

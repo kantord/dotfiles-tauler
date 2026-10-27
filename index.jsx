@@ -24,6 +24,8 @@ export { chartTheme } from './charts/theme.jsx';
 export { Layer, Scale, Axis, Grid, defineMark, stack, dodge, colorScale } from './charts/core.jsx';
 export { Line, Area, Rect, Bar, Dot, Link, Text, Arc } from './charts/marks.jsx';
 export { bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats } from './charts/stats.jsx';
+export { Treemap, Tree, Pack, Partition } from './charts/hierarchy.jsx';
+export { Geo, GeoDot } from './charts/geo.jsx';
 
 export { default as hueFor } from './lib/hueFor.jsx';
 

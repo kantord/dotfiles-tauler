@@ -10,9 +10,14 @@ const read = a => typeof a === 'function' ? a : d => d[a];
 // a maximum that sits on an edge a bin of its own), and values outside them are dropped.
 export function bin(data, { value, thresholds = 10 }) {
   const binner = d3.bin().value(read(value));
+  const values = data.map(read(value)).filter(v => v != null && !Number.isNaN(+v));
   if (thresholds === 1) {   // d3 7.9.0 gives this one bin infinite edges
-    const values = data.map(read(value)).filter(Number.isFinite);
     return values.length ? [{ x0: d3.min(values), x1: d3.max(values), count: values.length }] : [];
+  }
+  // Dates: a count becomes round time edges (every 5 minutes, every day...), kept as Dates.
+  if (!Array.isArray(thresholds) && values[0] instanceof Date) {
+    const time = d3.scaleTime().domain(d3.extent(values)).nice(thresholds), [low, high] = time.domain();
+    thresholds = d3.sort(new Set([+low, ...time.ticks(thresholds).map(Number), +high])).map(t => new Date(t));
   }
   if (Array.isArray(thresholds)) binner.domain([thresholds[0], thresholds.at(-1)]).thresholds(thresholds.slice(1, -1));
   else binner.thresholds(thresholds);
