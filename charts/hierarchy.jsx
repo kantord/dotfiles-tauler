@@ -7,19 +7,14 @@
 // function of the datum; a node with no row of its own shows the last segment of its path).
 import * as d3 from 'd3';
 import { defineMark, text } from './core.jsx';
+import { stratifyRows, lastSegment } from './layouts.jsx';
+import { fitsBox } from './typeset.jsx';
 
 const LABEL_SIZE = 10;
 
-// The rows as a d3 hierarchy, summed by `value` and sorted, biggest first, for stable layouts.
-function stratify(rows, { field, props }) {
-  const strata = props.path != null
-    ? d3.stratify().path(r => field(r, 'path'))
-    : d3.stratify().id(r => field(r, 'id')).parentId(r => field(r, 'parent'));
-  const root = strata(rows);
-  if (props.value != null) root.sum(r => (r ? +field(r, 'value') || 0 : 0));
-  else root.count();
-  return root.sort((a, b) => b.value - a.value || d3.ascending(a.id, b.id));
-}
+// The rows as a d3 hierarchy (layouts.jsx), the props read through `ctx.field`.
+const stratify = (rows, { field, props }) => stratifyRows(rows, { path: props.path != null ? r => field(r, 'path') : undefined,
+  id: r => field(r, 'id'), parent: r => field(r, 'parent'), value: props.value != null ? r => field(r, 'value') : undefined });
 
 // Below the trunk (where the tree first branches), each branch gets its own colour; a node is
 // coloured by its branch, unless its row has a `color` channel or the mark a `fill`.
@@ -35,9 +30,8 @@ function branchColours(root, ctx) {
   };
 }
 
-const lastSegment = id => String(id ?? '').split('/').filter(Boolean).at(-1) ?? '';
 const labelOf = (node, ctx) => String(node.data && ctx.props.label != null ? ctx.field(node.data, 'label') : lastSegment(node.id));
-const fits = (label, width, height, ctx) => ctx.measure(label, LABEL_SIZE) + 4 <= width && height >= LABEL_SIZE + 3;
+const fits = (label, width, height, ctx) => fitsBox([label], width, height, ctx.measure, LABEL_SIZE);   // the rule of `Text fit`
 const labelStyle = ctx => ({ fontSize: LABEL_SIZE, fontFamily: ctx.theme.font, fill: ctx.theme.ink, textAnchor: 'start', front: true });
 
 // Rects tiling the area, one per leaf. `tile`: squarify (default), binary, slice, dice, slice-dice.

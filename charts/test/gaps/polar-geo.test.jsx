@@ -20,7 +20,7 @@ const shares = [{ name: 'rent', n: 45 }, { name: 'food', n: 30 }, { name: 'fun',
 
 /* ---------- g33: the shapes of a polar family, each under one declared coordinate ---------- */
 
-test.fails('g33 rose: bars become wedges, one per bar, equally spaced in angle', () => {
+test('g33 rose: bars become wedges, one per bar, equally spaced in angle', () => {
   const data = ['n', 'ne', 'e', 'se', 's', 'sw'].map((k, i) => ({ k, v: 3 + ((i * 7) % 5) }));
   const bars = tap(<Bar />);
   const { scene } = polarPlot([bars], data, { x: 'k', y: 'v' });
@@ -32,7 +32,7 @@ test.fails('g33 rose: bars become wedges, one per bar, equally spaced in angle',
   d3.pairs(angles, (a, b) => (b - a + TAU) % TAU).forEach(step => near(step, TAU / data.length, 1e-6));
 });
 
-test.fails('g33 pie: slice angles are proportional to the share', () => {
+test('g33 pie: slice angles are proportional to the share', () => {
   const steps = cumsum(shares, { value: 'n' });
   const rects = tap(<Rect x1="from" x2="to" y1={0} y2={1} color="name" />);
   const { scene } = polarPlot([rects, <Scale channel="x" domain={[0, 100]} />, <Scale channel="y" domain={[0, 1]} />], steps);
@@ -42,7 +42,7 @@ test.fails('g33 pie: slice angles are proportional to the share', () => {
   steps.forEach(s => near(((angleOf(ctx.point(s.to - 1e-6, 1), c) - angleOf(ctx.point(s.from, 1), c) + TAU) % TAU) / TAU, s.n / 100, 1e-4));
 });
 
-test.fails('g33 donut: the hole is a fraction of the radius, set on the coordinate', () => {
+test('g33 donut: the hole is a fraction of the radius, set on the coordinate', () => {
   const rects = tap(<Rect x1={0} x2={50} y1={0} y2={1} />);
   polarPlot([rects, <Scale channel="x" domain={[0, 100]} />, <Scale channel="y" domain={[0, 1]} />], [{}], { coord: need('polar')({ inner: 0.5 }) });
   const { ctx } = rects.seen[0], c = centreOf(ctx.area), R = Math.min(ctx.area.width, ctx.area.height) / 2;
@@ -50,7 +50,7 @@ test.fails('g33 donut: the hole is a fraction of the radius, set on the coordina
   near(distance(ctx.point(10, 1), c), R, 0.01);
 });
 
-test.fails('g33 gauge: a half-turn coordinate maps the whole domain onto 180 degrees', () => {
+test('g33 gauge: a half-turn coordinate maps the whole domain onto 180 degrees', () => {
   const rects = tap(<Rect x1={0} x2={60} y1={0} y2={1} />);
   polarPlot([rects, <Scale channel="x" domain={[0, 100]} />, <Scale channel="y" domain={[0, 1]} />], [{}],
     { coord: need('polar')({ startAngle: -Math.PI / 2, endAngle: Math.PI / 2 }) });
@@ -60,7 +60,7 @@ test.fails('g33 gauge: a half-turn coordinate maps the whole domain onto 180 deg
   near(angleOf(ctx.point(50, 1), c), 0, 1e-6);
 });
 
-test.fails('g33 radar: a closed line whose radius follows the value', () => {
+test('g33 radar: a closed line whose radius follows the value', () => {
   const axes = ['speed', 'power', 'reach', 'armor', 'grip'].map((k, i) => ({ k, v: [60, 90, 30, 75, 45][i] }));
   const line = tap(<Line closed />);
   const { scene } = polarPlot([line, <Scale channel="y" domain={[0, 100]} />], axes, { x: 'k', y: 'v' });
@@ -71,7 +71,7 @@ test.fails('g33 radar: a closed line whose radius follows the value', () => {
   axes.forEach(a => near(distance(ctx.point(a.k, a.v), c) / R, a.v / 100, 1e-6));
 });
 
-test.fails('g33 radial bars: the angle swept follows the value, one ring per category', () => {
+test('g33 radial bars: the angle swept follows the value, one ring per category', () => {
   const data = [{ k: 'a', v: 25 }, { k: 'b', v: 50 }, { k: 'c', v: 75 }];
   const bars = tap(<Bar />);
   const { scene } = polarPlot([bars, <Scale channel="x" domain={[0, 100]} />], data, { x: 'v', y: 'k' });
@@ -81,18 +81,26 @@ test.fails('g33 radial bars: the angle swept follows the value, one ring per cat
   expect(new Set(data.map(d => distance(ctx.point(d.v, d.k), c).toFixed(3))).size).toBe(3);
 });
 
-test.fails('g33 sunburst: partition rows drawn as wedges, depth on the radius', () => {
+test('g33 sunburst: partition rows drawn as wedges, depth on the radius', () => {
   const files = [{ path: 'a/x', n: 3 }, { path: 'a/y', n: 5 }, { path: 'b/z', n: 4 }].map(d => ({ ...d, path: 'root/' + d.path }));
   const rows = need('partition')(files, { path: 'path', value: 'n' });
-  const rects = tap(<Rect x1="x0" x2="x1" y1="y0" y2="y1" color="branch" />);
+  // partition puts depth in x and breadth in y; polar reads x as the angle, so the call site swaps the channels.
+  const rects = tap(<Rect x1="y0" x2="y1" y1="x0" y2="x1" color="branch" />);
   const { scene } = polarPlot([rects, <Scale channel="x" domain={[0, 1]} />, <Scale channel="y" domain={[0, 1]} />], rows);
   expect(scene.marks.filter(s => s.t === 'path')).toHaveLength(rows.length);
   noFrameProps(rects);
+  const { ctx } = rects.seen[0], c = centreOf(ctx.area), R = Math.min(ctx.area.width, ctx.area.height) / 2;
+  rows.forEach(r => {   // the middle of each node: its depth is the radius, its breadth the angle
+    const p = ctx.point((r.y0 + r.y1) / 2, (r.x0 + r.x1) / 2);
+    near(distance(p, c) / R, (r.x0 + r.x1) / 2, 1e-6);
+    near(angleOf(p, c) / TAU, (r.y0 + r.y1) / 2, 1e-6);
+  });
+  expect(new Set(rows.map(r => r.depth)).size).toBeGreaterThan(2);
 });
 
 /* ---------- g34: centre text, needle and track are ordinary marks ---------- */
 
-test.fails('g34 a gauge from Rect, Link and Text: a track, a needle and centre text, no dedicated marks', () => {
+test('g34 a gauge from Rect, Link and Text: a track, a needle and centre text, no dedicated marks', () => {
   const sweep = need('polar')({ inner: 0.5, startAngle: -Math.PI * 0.75, endAngle: Math.PI * 0.75 });
   const track = tap(<Rect x1={0} x2={100} y1={0} y2={1} fill="#ddd" />);
   const needle = tap(<Link x1={62} y1={0} x2={62} y2={1} />);
@@ -111,7 +119,7 @@ test.fails('g34 a gauge from Rect, Link and Text: a track, a needle and centre t
 
 /* ---------- g35: labels outside wedges pick their anchor from the angle ---------- */
 
-test.fails('g35 Text under polar anchors at the start on the right half and at the end on the left', () => {
+test('g35 Text under polar anchors at the start on the right half and at the end on the left', () => {
   const steps = cumsum(shares, { value: 'n' }).map(s => ({ ...s, mid: (s.from + s.to) / 2 }));
   const labels = tap(<Text x="mid" y={1} text={d => d.name} />);   // no textAnchor, no per-label offsets
   const { scene } = polarPlot([labels, <Scale channel="x" domain={[0, 100]} />, <Scale channel="y" domain={[0, 1]} />], steps);
@@ -134,7 +142,7 @@ function polarGrid(grid, coord = need('polar')()) {
 const rings = scene => scene.back.filter(s => s.t === 'path');
 const spokes = scene => scene.back.filter(s => s.t === 'line');
 
-test.fails('g36 a polygon grid: rings with one vertex per category, and spokes', () => {
+test('g36 a polygon grid: rings with one vertex per category, and spokes', () => {
   const { scene, ctx } = polarGrid(<Grid shape="polygon" />);
   expect(rings(scene).length).toBeGreaterThan(2);
   for (const r of rings(scene)) expect(pathPoints(r.d)).toHaveLength(spokesData.length);
@@ -143,7 +151,7 @@ test.fails('g36 a polygon grid: rings with one vertex per category, and spokes',
   expect(spokes(scene)).toHaveLength(spokesData.length);
 });
 
-test.fails('g36 a circular grid without spokes', () => {
+test('g36 a circular grid without spokes', () => {
   const { scene, ctx } = polarGrid(<Grid shape="circle" spokes={false} />);
   expect(rings(scene).length).toBeGreaterThan(2);
   const c = centreOf(ctx.area);
@@ -154,7 +162,7 @@ test.fails('g36 a circular grid without spokes', () => {
   expect(spokes(scene)).toHaveLength(0);
 });
 
-test.fails('g36 a grid follows a partial sweep: nothing drawn outside the arc', () => {
+test('g36 a grid follows a partial sweep: nothing drawn outside the arc', () => {
   const { scene, ctx } = polarGrid(<Grid shape="circle" />, need('polar')({ startAngle: -Math.PI / 2, endAngle: Math.PI / 2 }));
   const c = centreOf(ctx.area);
   for (const r of rings(scene)) for (const p of pathPoints(r.d)) expect(p[1]).toBeLessThanOrEqual(c[1] + 0.05);   // the upper half
@@ -164,7 +172,7 @@ test.fails('g36 a grid follows a partial sweep: nothing drawn outside the arc', 
 
 const places = [{ name: 'one', lon: -100, lat: 40 }, { name: 'two', lon: 10, lat: 20 }, { name: 'three', lon: 120, lat: -15 }];
 
-test.fails('g37 Dot with no channel props lands where GeoDot lands', () => {
+test('g37 Dot with no channel props lands where GeoDot lands', () => {
   const geoDots = tap(<GeoDot />);
   compile({ width: 300, height: 200, data: places, projection: 'mercator', children: [geoDots] });
   const { projection } = geoDots.seen[0].ctx;
@@ -175,7 +183,7 @@ test.fails('g37 Dot with no channel props lands where GeoDot lands', () => {
   places.forEach((p, i) => { const [px, py] = projection([p.lon, p.lat]); near(circles[i].cx, px, 0.02); near(circles[i].cy, py, 0.02); });
 });
 
-test.fails('g37 a long Line follows the projected great circle instead of a straight chord', () => {
+test('g37 a long Line follows the projected great circle instead of a straight chord', () => {
   const route = [{ lon: -120, lat: 40 }, { lon: 120, lat: 40 }];
   const { scene } = compile({ width: 400, height: 260, data: route, coord: need('geo')('mercator'), children: [<Line />] });
   const pts = pathPoints(scene.marks.find(s => s.t === 'path').d);
@@ -187,7 +195,7 @@ test.fails('g37 a long Line follows the projected great circle instead of a stra
 
 const nums = d => d.match(/-?\d+(?:\.\d+)?/g).map(Number);
 
-test.fails('g38 Link curve="link-horizontal" draws the d3 horizontal-link path', () => {
+test('g38 Link curve="link-horizontal" draws the d3 horizontal-link path', () => {
   const link = tap(<Link curve="link-horizontal" />);
   const { scene } = compile({ width: 300, height: 200, data: [{ a: 1, b: 2, c: 9, e: 7 }], x1: 'a', y1: 'b', x2: 'c', y2: 'e', children: [link] });
   const { ctx } = link.seen[0];
@@ -199,7 +207,7 @@ test.fails('g38 Link curve="link-horizontal" draws the d3 horizontal-link path',
   got.forEach((v, i) => near(v, want[i], 0.02));
 });
 
-test.fails('g38 Area thickness1/thickness2 draws a ribbon with the given thickness at both ends', () => {
+test('g38 Area thickness1/thickness2 draws a ribbon with the given thickness at both ends', () => {
   const ribbon = tap(<Area x1="sx" x2="tx" y1="sy" y2="ty" thickness1="w0" thickness2="w1" />);
   const row = { sx: 1, sy: 3, tx: 9, ty: 7, w0: 2, w1: 1 };
   const { scene } = compile({ width: 300, height: 200, data: [row], children: [ribbon, <Scale channel="y" domain={[0, 10]} />, <Scale channel="x" domain={[0, 10]} />] });
@@ -209,7 +217,7 @@ test.fails('g38 Area thickness1/thickness2 draws a ribbon with the given thickne
   near(gapAt(9), 1 * unit, 0.05);
 });
 
-test.fails('g38 Dot rx/ry are radii in data units, so the circle scales with the plot', () => {
+test('g38 Dot rx/ry are radii in data units, so the circle scales with the plot', () => {
   const radius = width => compile({ width, height: 200, data: [{ x: 5, y: 5 }], x: 'x', y: 'y',
     children: [<Dot rx={1} ry={1} />, <Scale channel="x" domain={[0, 10]} />, <Scale channel="y" domain={[0, 10]} />] }).scene.marks[0].r;
   const [small, large] = [radius(200), radius(400)];

@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Text, Arc, Layer, Scale, Axis, Grid, stack, dodge, defineMark, colorScale, chartTheme, bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group, Layer, Scale, Axis, Grid, Legend, stack, dodge, jitter, jitterPx, geo, polar, defineMark, defineScale, defineGuide, colorScale, sizeScale, shapeScale, opacityScale, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath, chartTheme, bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -35,7 +35,7 @@ plus the two things it says have no kind at all:
 |------------|---------|----------------------|--------------------------------------------------|
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
-| `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `hierarchy.jsx`, `geo.jsx`, `theme.jsx`, `stats.jsx` |
+| `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `hierarchy.jsx`, `geo.jsx`, `theme.jsx`, `stats.jsx`, and the stages and marks they use |
 | `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
 | `lib/`     | —       | plain functions, no component | `hueFor.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
@@ -330,9 +330,9 @@ While the first reading is still loading, or if a fetch fails, shows `…` and
 ## Charts
 
 A grammar of graphics on d3, drawn as tauler `<D3Figure>`s. A `Plot` takes
-marks (`Line`, `Area`, `Rect`, `Bar`, `Dot`, `Link`, `Text`, `Arc`; trees and maps
-below) and pieces
-(`Layer`, `Scale`, `Axis`, `Grid`) as JSX children. Needs tauler 0.7.0 or later
+marks (`Line`, `Area`, `Rect`, `Bar`, `Dot`, `Link`, `Vector`, `Text`, `Arc`, `Polygon`,
+`RuleX`, `RuleY`, `TickX`, `TickY`, `Swarm`, `Image`, `Group`; trees and maps below) and
+pieces (`Layer`, `Scale`, `Axis`, `Grid`, `Legend`) as JSX children. Needs tauler 0.7.0 or later
 (`D3Figure`); tauler downloads d3 itself. The design and its decisions are in
 [`charts/SPEC.md`](charts/SPEC.md).
 
@@ -378,20 +378,34 @@ import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler"
   scale a point fills the band (`inset` px less each side), elsewhere it is
   `width` px wide. `Bar` is a `Rect` from 0 on its value axis (y, or x when y
   is a band). `Link` is a segment; `Arc` a pie, donut (`inner`) or gauge
-  (`startAngle`, `endAngle`) with `value` a field name. Style props (`fill`,
+  (`startAngle`, `endAngle`) with `value` a field name; `Vector` is a pixel-length arrow,
+  `Swarm` a beeswarm, `Polygon` rings from data, `Text` wraps (`width`) and turns (`angle`). Style props (`fill`,
   `stroke`, `r`, `text`, `dy`, ...) are constants or functions of the datum.
 - **Positions:** `position={stack()}` piles rows sharing x (`offset:
   "expand"` for shares, `along: "x"` for horizontal); `dodge()` gives each
-  series a slot of its band.
+  series a slot of its band; `jitter()` (band axes) and `jitterPx()` (pixels) spread
+  overlapping points.
 - **Scales** are inferred from all values: Dates → `time`, numbers →
   `linear`, anything else → `band`; numeric `color` → sequential. JSON has no
   Dates, so ISO strings need `<Scale channel="x" type="time" />`, and integer
   categories (hours, weeks) need `type="band"`. `Scale` also takes `domain`,
   `range` (colours for `color`, any number of stops; three around a pivot make
-  it diverging), `padding`, and `type="log"`. `curve` takes any d3 curve name
+  it diverging), `padding`, and `type="log"` (also `sqrt`, `pow`, `time`, `ordinal`, `point`, `threshold`, `quantize`, `quantile`); named scales
+  (`name`, then `scale` on a mark, `Layer`, `Axis` or `Grid`) give a second axis. `colorScale`,
+  `sizeScale`, `shapeScale` and `opacityScale` read a trained scale; `defineScale` and
+  `defineGuide` add your own. `curve` takes any d3 curve name
   (`"monotone"`, `"step-before"`, `"basis"`...).
 - **Statistics** are plain `data -> data` functions, called before the `Plot`: `bin`, `bin2d`,
-  `group`, `rolling`, `cumsum`, `kde`, `ecdf`, `boxStats`.
+  `group`, `groupBy`, `rolling`, `cumsum`, `normalize`, `last`, `fold`, `rank`, `kde`, `ecdf`,
+  `boxStats`, `regress`, `difference`, `waterfall`, `orderBy`, `dateRange`, `flow` (Sankey
+  rows), and `hexbin`, `delaunay`, `contours`, `densityContours` (rows for `Polygon`); details
+  in `charts/SPEC.md`.
+- **Guides:** `Axis`, `Grid` and `Legend` (`channel="color"`, keys or a sequential ramp).
+- **Coordinates:** `coord={polar()}` turns the same marks into pies, roses, radar charts
+  and sunbursts (`Grid` and `Axis` follow); `projection` and `fit` draw maps.
+- **Effects:** `fill` and `stroke` take `linearGradient`, `radialGradient`, `pattern` and
+  `hatch`; marks take `filter` (`blur`, `dropShadow`), `mask`, `clip` and `blend`; lines take
+  `markerStart` and `markerEnd` (`marker`, `arrowhead`); `clipRect` and `clipPath` make clips.
 - **Your own marks:** `defineMark(name, { render(rows, ctx) { return shapes } })`.
   `ctx` has `x`, `y` (value → pixel), `color`, `area`, `bandwidth`, `theme`,
   `props`, `resolve` (a style prop), `field` (a value prop) and `measure`; a
@@ -406,8 +420,6 @@ import { Plot, Bar, Scale, Axis, stack, bin } from "@gh/kantord/dotfiles-tauler"
   `color` channel makes a choropleth); `GeoDot` draws `lon`/`lat` points. Detailed
   shapes are expensive to hash every Tick (a 3000-point coastline: 29 ms), so give a map
   Plot a `key` (0.4 ms), changed when the data does.
-- **Legends** are ordinary tauler JSX beside the figure; `colorScale(keys,
-  theme)` gives the same colours the Plot uses.
 - `width` and `height` are required numbers; `margin={{ left: 4 }}` fixes a
   side (for aligned small multiples). Text is measured as `characters × size ×
   0.6`, which is exact for a monospace font such as JetBrains Mono; pass
@@ -671,3 +683,5 @@ gallery` writes a page showing them all); and fast-check properties
 Copyright 2026 Dániel Kántor. Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ggplot2, Observable Plot and other libraries are named only for comparison; this project is not affiliated with them.
+Mark and option names follow d3 and the SVG and CSS names where they fit, Observable Plot for several
+marks (`RuleX`, `TickY`, `Vector`, `Image`) and ggplot2 for the grammar terms (layers, stats, positions, facets).

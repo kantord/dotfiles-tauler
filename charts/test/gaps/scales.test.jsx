@@ -3,30 +3,35 @@
 // at which point `fails` is removed. Data is invented and seeded.
 import { test, expect } from 'vitest';
 import * as d3 from 'd3';
-import { compile, Scale, Axis, Grid } from '../../core.jsx';
+import { compile, Scale, Axis, Grid, defineChannel } from '../../core.jsx';
 import { Dot, Line, Bar } from '../../marks.jsx';
-import { need, tap, near, edgesOf, W, H } from './support.js';
+import { tap, near, edgesOf, W, H } from './support.js';
 
 /* ---------- g01: nothing unsupported is accepted silently ---------- */
 
 const trio = [{ a: 1, b: 2 }, { a: 2, b: 5 }, { a: 3, b: 4 }];
 const plotOf = children => compile({ width: W, height: H, data: trio, x: 'a', y: 'b', children });
 
-test.fails('g01 an unsupported scale type throws, naming channel and type', () => {
+test('g01 an unsupported scale type throws, naming channel and type', () => {
   expect(() => plotOf([<Dot />, <Scale channel="y" type="sqroot" />])).toThrow(/sqroot/);
   expect(() => plotOf([<Dot />, <Scale channel="y" type="sqroot" />])).toThrow(/\by\b/);
 });
 
-test.fails('g01 an unknown channel on Scale throws, naming it', () => {
+test('g01 an unknown channel on Scale throws, naming it', () => {
   expect(() => plotOf([<Dot />, <Scale channel="colour" type="ordinal" />])).toThrow(/colour/);
 });
 
-test.fails('g01 an unknown channel on Axis throws, naming it', () => {
+test('g01 an unknown channel on Axis throws, naming it', () => {
   expect(() => plotOf([<Dot />, <Axis channel="z" />])).toThrow(/\bz\b/);
 });
 
-test.fails('g01 an unknown channel on Grid throws, naming it', () => {
+test('g01 an unknown channel on Grid throws, naming it', () => {
   expect(() => plotOf([<Dot />, <Grid channel="q" />])).toThrow(/\bq\b/);
+});
+
+test('g01 a child that is not a mark or a guide throws (a mistyped mark name), unknown style props do not', () => {
+  expect(() => plotOf([{ type: 'dott', props: {} }])).toThrow(/dott/);
+  expect(() => plotOf([<Dot colour="red" />])).not.toThrow();   // custom marks read their own props
 });
 
 test('g01 supported types and channels are still accepted', () => {
@@ -40,7 +45,7 @@ test('g01 supported types and channels are still accepted', () => {
 // Deliberately unsorted: the data is the raw input.
 const masses = [{ id: 'p', mass: 16 }, { id: 'q', mass: 1 }, { id: 'r', mass: 36 }, { id: 's', mass: 4 }, { id: 't', mass: 25 }, { id: 'u', mass: 9 }];
 
-test.fails('g02 sqrt size scale: dot area is proportional to the value (r**2 / value constant)', () => {
+test('g02 sqrt size scale: dot area is proportional to the value (r**2 / value constant)', () => {
   const dots = tap(<Dot size="mass" />);
   const { scene } = compile({ width: W, height: H, data: masses, x: 'id', y: 'mass',
     children: [dots, <Scale channel="size" type="sqrt" domain={[0, 36]} range={[0, 10]} />] });
@@ -48,11 +53,11 @@ test.fails('g02 sqrt size scale: dot area is proportional to the value (r**2 / v
   expect(dots.props.r).toBeUndefined();                       // no hand-written radius function
   const circles = scene.marks.filter(s => s.t === 'circle');
   expect(circles).toHaveLength(masses.length);
-  circles.forEach((c, i) => near((c.r * c.r) / masses[i].mass, 100 / 36, 0.01));
+  circles.forEach((c, i) => near((c.r * c.r) / masses[i].mass, 100 / 36, 0.02));   // r is rounded to 2 places in the scene
   near(Math.max(...circles.map(c => c.r)), 10, 0.01);
 });
 
-test.fails('g02 a sqrt scale on a position channel bends the axis', () => {
+test('g02 a sqrt scale on a position channel bends the axis', () => {
   const dots = tap(<Dot />);
   compile({ width: W, height: H, data: [{ x: 1, y: 1 }, { x: 4, y: 2 }, { x: 9, y: 3 }, { x: 16, y: 4 }], x: 'x', y: 'y',
     children: [dots, <Scale channel="x" type="sqrt" domain={[0, 16]} />] });
@@ -67,7 +72,7 @@ const readings = [3, 12, 18, 25, 38, 7].map((v, i) => ({ id: 'r' + i, v }));
 const CLASSES = ['#2a4d9b', '#3d9fb0', '#e0b341', '#c4452f'];
 const fillsOf = scene => scene.marks.filter(s => s.t === 'circle').map(s => s.fill);
 
-test.fails('g03 threshold colour scale: classes by explicit edges, readable from the scale', () => {
+test('g03 threshold colour scale: classes by explicit edges, readable from the scale', () => {
   const dots = tap(<Dot color="v" />);
   const { scene } = compile({ width: W, height: H, data: readings, x: 'id', y: 'v',
     children: [dots, <Scale channel="color" type="threshold" domain={[10, 20, 30]} range={CLASSES} />] });
@@ -77,7 +82,7 @@ test.fails('g03 threshold colour scale: classes by explicit edges, readable from
   expect(dots.props.fill).toBeUndefined();   // no raw function inside `fill`
 });
 
-test.fails('g03 quantile colour scale: equal-count classes, edges readable from the scale', () => {
+test('g03 quantile colour scale: equal-count classes, edges readable from the scale', () => {
   const data = [5, 50, 12, 80, 31, 9, 64, 27].map((v, i) => ({ id: 'q' + i, v }));
   const dots = tap(<Dot color="v" />);
   const { scene } = compile({ width: W, height: H, data, x: 'id', y: 'v',
@@ -89,7 +94,7 @@ test.fails('g03 quantile colour scale: equal-count classes, edges readable from 
   expect(edges).toEqual([...edges].sort((a, b) => a - b));
 });
 
-test.fails('g03 quantize colour scale: equal-width classes, edges readable from the scale', () => {
+test('g03 quantize colour scale: equal-width classes, edges readable from the scale', () => {
   const data = [2, 9, 11, 19, 21, 29].map((v, i) => ({ id: 'w' + i, v }));
   const dots = tap(<Dot color="v" />);
   const { scene } = compile({ width: W, height: H, data, x: 'id', y: 'v',
@@ -103,7 +108,7 @@ test.fails('g03 quantize colour scale: equal-width classes, edges readable from 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 const visits = MONTHS.map((month, i) => ({ month, visits: 40 + 7 * i + (i % 2) * 5 }));
 
-test.fails('g04 a point scale puts categories on a line chart with their own labels', () => {
+test('g04 a point scale puts categories on a line chart with their own labels', () => {
   const line = tap(<Line />);
   const axis = <Axis channel="x" />;
   const { scene } = compile({ width: W, height: H, data: visits, x: 'month', y: 'visits',
@@ -122,13 +127,12 @@ test.fails('g04 a point scale puts categories on a line chart with their own lab
 
 /* ---------- g05: a computed value trains a scale ---------- */
 
-test.fails('g05 a rank written by a position trains a colour scale that a second mark reads', () => {
-  const defineChannel = need('defineChannel');
+test('g05 a rank written by a position trains a colour scale that a second mark reads', () => {
   defineChannel('rank', { scale: 'color' });
   const scores = [{ id: 'a', score: 31 }, { id: 'b', score: 77 }, { id: 'c', score: 12 }, { id: 'd', score: 54 }, { id: 'e', score: 60 }];
   const byRank = rows => { d3.sort(rows, r => -r.y).forEach((r, i) => { r.rank = i + 1; }); return rows; };
   const dots = tap(<Dot position={byRank} />), bars = tap(<Bar position={byRank} />);
-  compile({ width: W, height: H, data: scores, x: 'id', y: 'score', children: [dots, bars] });
+  compile({ width: W, height: H, data: scores, x: 'id', y: 'score', children: [dots, bars, <Scale channel="color" type="ordinal" />] });   // a rank is a number: sequential unless declared ordinal
   expect(scores.every(d => !('rank' in d))).toBe(true);   // the rank is not a field of the input
   const [a, b] = [dots.seen[0].ctx.color, bars.seen[0].ctx.color];
   expect(a.domain()).toEqual([1, 2, 3, 4, 5]);
@@ -146,7 +150,7 @@ const form = s => (s.t === 'circle' ? 'circle' : s.d.replace(/[-\d.,e]+/g, ''));
 const scene6 = (dot, extra = []) => compile({ width: W, height: H, data: bodies, x: 'id', y: 'mass',
   children: [dot, <Scale channel="size" type="sqrt" range={[0, 10]} />, ...extra] }).scene.marks;
 
-test.fails('g06 one categorical field drives both colour and marker shape', () => {
+test('g06 one categorical field drives both colour and marker shape', () => {
   const shapes = scene6(<Dot color="kind" shape="kind" />);
   const byKind = d3.group(shapes.map((s, i) => ({ s, kind: bodies[i].kind })), o => o.kind);
   expect(byKind.size).toBe(3);
@@ -158,7 +162,7 @@ test.fails('g06 one categorical field drives both colour and marker shape', () =
   expect(new Set([...byKind.values()].map(rows => rows[0].s.fill)).size).toBe(3);
 });
 
-test.fails('g06 a number drives size and another drives opacity, each through a scale', () => {
+test('g06 a number drives size and another drives opacity, each through a scale', () => {
   const shapes = scene6(<Dot size="mass" opacity="conf" />);
   const order = key => d3.sort(d3.range(bodies.length), i => bodies[i][key]);
   const radii = order('mass').map(i => shapes[i].r), opacities = order('conf').map(i => shapes[i].opacity);
@@ -169,7 +173,7 @@ test.fails('g06 a number drives size and another drives opacity, each through a 
   expect(new Set(opacities).size).toBe(bodies.length);
 });
 
-test.fails('g06 a function-valued style prop still wins over its channel', () => {
+test('g06 a function-valued style prop still wins over its channel', () => {
   const shapes = scene6(<Dot size="mass" opacity="conf" r={() => 7} />);
   expect(shapes.every(s => s.r === 7)).toBe(true);
   expect(new Set(shapes.map(s => s.opacity)).size).toBe(bodies.length);   // the opacity channel is untouched

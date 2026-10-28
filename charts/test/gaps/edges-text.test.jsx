@@ -23,7 +23,7 @@ function endLabels(scaleX) {
 }
 const inside = (s, width) => s.x - defaultMeasure(s.text, FONT_SIZE) / 2 >= 0 && s.x + defaultMeasure(s.text, FONT_SIZE) / 2 <= width;
 
-test.fails('g30 rangePad keeps the labels at the first and last point inside the figure', () => {
+test('g30 rangePad keeps the labels at the first and last point inside the figure', () => {
   const { scene, ctx } = endLabels(<Scale channel="x" domain={[0, 9]} rangePad={24} />);
   const labels = scene.front.filter(s => ends.some(e => e.label === s.text));
   expect(labels).toHaveLength(2);
@@ -44,7 +44,7 @@ test('g30 without rangePad the end labels overflow the figure (the gap)', () => 
 
 const winds = [{ lon: 2, lat: 3, dir: 0 }, { lon: 5, lat: 3, dir: 90 }, { lon: 8, lat: 3, dir: 225 }];
 
-test.fails('g31 Vector draws a fixed-pixel-length segment at an angle clockwise from up', () => {
+test('g31 Vector draws a fixed-pixel-length segment at an angle clockwise from up', () => {
   const Vector = need('Vector');
   const lengths = [];
   for (const [width, height] of [[W, H], [2 * W, 2 * H]]) {
@@ -68,7 +68,7 @@ test.fails('g31 Vector draws a fixed-pixel-length segment at an angle clockwise 
 
 const tiles = [{ name: 'wide', x1: 0, x2: 8, y1: 0, y2: 4 }, { name: 'thin', x1: 8, x2: 8.2, y1: 0, y2: 4 }, { name: 'short', x1: 0, x2: 8, y1: 4, y2: 4.1 }];
 
-test.fails('g40 Text fit draws a label only where it fits the box it names', () => {
+test('g40 Text fit draws a label only where it fits the box it names', () => {
   const { scene } = compile({ width: W, height: H, data: tiles, children: [
     <Rect x1="x1" x2="x2" y1="y1" y2="y2" />,
     <Text x1="x1" x2="x2" y1="y1" y2="y2" text={d => d.name} fit />,
@@ -103,16 +103,16 @@ function overlap(a, b) {
 
 const LONG = 'Quarterly average request throughput';
 
-test.fails('g48 a long label wraps inside a stated width; the lines do not overlap', () => {
+test('g48 a long label wraps inside a stated width; the lines do not overlap', () => {
   const { scene } = compile({ width: W, height: H, data: [{ k: 1 }], x: 'k', y: 'k', children: [<Text text={() => LONG} width={60} />] });
   const lines = scene.front.filter(s => s.t === 'text');
   expect(lines.length).toBeGreaterThan(1);
   lines.forEach(l => expect(defaultMeasure(l.text, l.fontSize ?? FONT_SIZE)).toBeLessThanOrEqual(60));
-  expect(lines.map(l => l.text).join(' ')).toBe(LONG);
+  expect(lines.map(l => l.text).join('').replace(/\s/g, '')).toBe(LONG.replace(/\s/g, ''));   // a word wider than the width is cut inside it
   d3.pairs(lines).forEach(([p, q]) => expect(overlap(boxOf(p), boxOf(q))).toBe(false));
 });
 
-test.fails('g48 rotated axis labels are all drawn and none overlaps its neighbour', () => {
+test('g48 rotated axis labels are all drawn and none overlaps its neighbour', () => {
   const places = ['Harbour', 'Old mill', 'Station', 'Market sq', 'Lighthouse', 'Quarry', 'Orchard', 'Canal'];
   const { scene } = compile({ width: 240, height: H, data: places.map((p, i) => ({ p, n: 3 + (i % 3) })), x: 'p', y: 'n',
     children: [<Line />, <Axis channel="x" labelAngle={-45} />] });
@@ -131,8 +131,8 @@ test('g48 box maths: unrotated neighbouring labels overlap exactly when they tou
 
 /* ---------- g49: a hatch pattern fill, not a dashed outline ---------- */
 
-// Host constraint (does tauler's rasteriser draw a pattern) is recorded in SPEC 5.5 when 1.5 lands.
-test.fails('g49 a hatched region has a pattern fill in the scene and in the drawn svg', () => {
+// The host renders <pattern> (SPEC 5.5, capability list), so this is a real outcome.
+test('g49 a hatched region has a pattern fill in the scene and in the drawn svg', () => {
   const band = [{ k: 'estimate', lo: 10, hi: 30 }];
   const child = <Rect y1="lo" y2="hi" pattern="hatch" />;
   const { scene } = compile({ width: W, height: H, data: band, x: 'k', children: [child] });

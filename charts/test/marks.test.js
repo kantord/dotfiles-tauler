@@ -17,7 +17,7 @@ test('ctx has everything a third-party mark needs', () => {
   const Spy = defineMark('spy', { render: (rows, ctx) => { seen = ctx; return []; } });
   plot([Spy({ value: 'b', fill: d => (d.a > 1 ? 'red' : 'blue') })]);
   assert.deepEqual(Object.keys(seen).sort(),
-    ['area', 'bandwidth', 'color', 'field', 'measure', 'projection', 'props', 'resolve', 'theme', 'x', 'y']);
+    ['area', 'bandwidth', 'color', 'coord', 'field', 'line', 'measure', 'point', 'projection', 'props', 'resolve', 'shape', 'size', 'theme', 'x', 'y']);
   assert.deepEqual(Object.keys(seen.area).sort(), ['bottom', 'height', 'left', 'right', 'top', 'width']);
   assert.equal(seen.bandwidth.x(), 0);
   assert.equal(seen.x(1), seen.area.left);

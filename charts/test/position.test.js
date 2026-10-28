@@ -57,3 +57,15 @@ test('dodge writes u1 u2 slots, and Rect narrows its band to them', () => {
   assert.ok(Math.abs(a.width - b.width) < 0.01);
 });
 
+
+test('a diverging stack piles negatives downward from 0, each from the one before', () => {
+  const rows = run([{ x: 1, y: 3, color: 'a' }, { x: 1, y: -2, color: 'b' }, { x: 1, y: -1, color: 'c' }], stack({ offset: 'diverging' }));
+  assert.deepEqual(ends(rows), [[0, 3], [0, -2], [-2, -3]]);
+});
+
+test('one stack() reused takes each use its own grouping: x, then x1 for a histogram', () => {
+  const position = stack();
+  run([{ x: 1, y: 1, color: 'a' }, { x: 2, y: 1, color: 'a' }], position);
+  const rows = run([{ x1: 0, x2: 1, y: 2, color: 'a' }, { x1: 1, x2: 2, y: 3, color: 'a' }], position);
+  assert.deepEqual(ends(rows), [[0, 2], [0, 3]]);
+});

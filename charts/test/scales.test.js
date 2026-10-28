@@ -82,3 +82,10 @@ test('nice never cuts data off (d3 shrinks a domain whose span is at float preci
   const ctx = ctxOf({ data: [{ k: -999999.9999999983 }, { k: -999999.9999999979 }], x: 'k' });
   expect(ctx.x(-999999.9999999979)).toBeLessThanOrEqual(ctx.area.right);
 });
+
+test('a continuous scale type on the colour channel takes the default ramp instead of throwing', () => {
+  for (const type of ['linear', 'sqrt', 'pow', 'log']) {
+    const ctx = ctxOf({ data: [{ k: 1, c: 1 }, { k: 2, c: 9 }], x: 'k', y: 'k', color: 'c' }, Scale({ channel: 'color', type }));
+    assert.notEqual(ctx.color(1), ctx.color(9), type);
+  }
+});

@@ -11,7 +11,7 @@ import * as d3 from 'd3';
 import { drawFigure, figureKeys, resetFigures } from '../../../test/tauler.js';
 import { Plot } from '../../Plot.jsx';
 import * as core from '../../core.jsx';
-import { Layer, Scale, Axis, defineMark, stack, dodge, colorScale, defaultTheme } from '../../core.jsx';
+import { Layer, Scale, Axis, defineMark, stack, dodge, jitter, colorScale, defaultTheme, polar } from '../../core.jsx';
 import { Line, Area, Rect, Bar, Dot, Link, Text, Arc } from '../../marks.jsx';
 import { bin, group, boxStats } from '../../stats.jsx';
 import { cars, monthly, eruptions, growth, march, cities } from './data.js';
@@ -187,7 +187,7 @@ test('12 stacked counts: each pile is its class total', async () => {
   await snapshot('12-stack');
 });
 
-test.fails('13 GAP dodge2: a band with fewer series gives them wider bars', () => {
+test('13 dodge: a band with fewer series gives them wider bars', () => {
   const bars = tap(<Bar position={dodge()} />);
   <Plot width={W} height={H} data={classDrive} x="cls" y="n" color="drv">{bars}</Plot>;
   const widths = d3.rollup(bars.seen[0].rows, rows => rows[0].u2 - rows[0].u1, r => r.x);
@@ -210,8 +210,21 @@ test('14 stacking normalised to 1 (position = "fill")', async () => {
   await snapshot('14-fill');
 });
 
-test.fails('15 GAP jitter: a deterministic jitter position', () => {
-  expect(core.jitter).toBeTypeOf('function');
+test('15 jitter: deterministic, per key, inside the band; rows with no key stay; a non-band axis throws', () => {
+  const offsets = (data, scales = [<Scale channel="x" type="band" />]) => {
+    const dots = tap(<Dot key="id" position={jitter()} />);
+    <Plot width={W} height={H} data={data} x="cls" y="n">{dots}{scales}</Plot>;
+    return dots.seen[0].rows.map(r => (r.u1 == null ? 0 : (r.u1 + r.u2) / 2 - 0.5));
+  };
+  const data = ['a', 'b', 'c', 'd'].map(id => ({ id, cls: 'suv', n: 1 }));
+  const once = offsets(data);
+  expect(offsets(data)).toEqual(once);
+  expect(new Set(once).size).toBe(4);
+  once.forEach(o => expect(Math.abs(o)).toBeLessThanOrEqual(0.5));
+  expect(offsets(data.slice(1))).toEqual(once.slice(1));
+  expect(offsets(data.map(({ cls, n }) => ({ cls, n })))).toEqual([0, 0, 0, 0]);
+  expect(() => offsets(data, [])).toThrow(/jitterPx/);
+  expect(() => offsets(data, [<Scale channel="x" type="linear" />])).toThrow(/jitterPx/);
 });
 
 test('stat before position: stacked per-group histograms pile up to the overall histogram', () => {
@@ -297,7 +310,14 @@ test('20 a pie of counts (coord_polar on a stacked bar)', async () => {
   await snapshot('20-pie');
 });
 
-test.skip('21 NON-GOAL coxcomb and polar munching: no coord stage; Arc covers pie, donut and gauge', () => {});
+test('21 a coxcomb: bars of counts under coord={polar()} are one wedge per class', async () => {
+  const counts = group(cars, 'cls');
+  <Plot width={200} height={200} data={counts} x="key" y="value" coord={polar()}><Bar /></Plot>;
+  const svg = marksOf();
+  expect(count(svg, 'path')).toBe(counts.length);
+  expect(count(svg, 'rect')).toBe(0);
+  await snapshot('21-coxcomb');
+});
 
 test('22 flipped box plots: swap the channels, no coord needed', async () => {
   const boxes = boxStats(cars, { by: 'cls', value: 'hwy' });

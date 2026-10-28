@@ -1,9 +1,10 @@
 // Gap examples g39, g41-g45: layouts and spatial statistics that return rows for generic marks
-// (GAPS 3.8a, 2.2, 3.11, 3.10, 3.14). Data is invented and seeded.
+// (3.8a, 2.2, 3.11, 3.10, 3.14: all built). Data is invented and seeded.
 import { test, expect } from 'vitest';
 import * as d3 from 'd3';
 import { compile, Scale } from '../../core.jsx';
 import { Line, Rect, Dot, Text } from '../../marks.jsx';
+import { fold, normalize } from '../../stats.jsx';
 import { need, tap, near, seeded } from './support.js';
 
 /* ---------- g39: one layout statistic, two marks ---------- */
@@ -13,7 +14,7 @@ const budget = [
   { path: 'dev/salaries', cost: 90 }, { path: 'misc', cost: 5 }, { path: 'ops/legal', cost: 25 },
 ];
 
-test.fails('g39 treemap() returns rows that Rect and Text both draw, with areas proportional to value', () => {
+test('g39 treemap() returns rows that Rect and Text both draw, with areas proportional to value', () => {
   const rows = need('treemap')(budget, { path: 'path', value: 'cost' });
   const isLeaf = r => !rows.some(o => o.parentId === r.id);
   const leaves = rows.filter(isLeaf);
@@ -35,10 +36,10 @@ test.fails('g39 treemap() returns rows that Rect and Text both draw, with areas 
 const specs = [{ id: 'm1', weight: 1200, power: 90, range: 410 }, { id: 'm2', weight: 900, power: 70, range: 520 },
   { id: 'm3', weight: 1500, power: 140, range: 380 }, { id: 'm4', weight: 1100, power: 110, range: 450 }];
 
-test.fails('g41 fold, then normalize by variable, then Line over a band axis of variable names', () => {
+test('g41 fold, then normalize by variable, then Line over a band axis of variable names', () => {
   const before = JSON.stringify(specs);
-  const long = need('fold')(specs, { keys: ['weight', 'power', 'range'], key: 'variable', value: 'value' });
-  const flat = need('normalize')(long, { by: 'variable', value: 'value', as: 'norm' });
+  const long = fold(specs, { keys: ['weight', 'power', 'range'], key: 'variable', value: 'value' });
+  const flat = normalize(long, { by: 'variable', value: 'value', as: 'norm' });
   const line = tap(<Line group="id" />);
   const { scene } = compile({ width: 300, height: 200, data: flat, x: 'variable', y: 'norm', children: [line] });
   expect(JSON.stringify(specs)).toBe(before);
@@ -61,7 +62,7 @@ const stackedApart = nodes => {
   }
 };
 
-test.fails('g42 flow() lays out nodes that never overlap, sized by their throughput', () => {
+test('g42 flow() lays out nodes that never overlap, sized by their throughput', () => {
   const { nodes } = need('flow')(moves, { source: 'source', target: 'target', value: 'value', width: 300, height: 200 });
   expect(nodes).toHaveLength(4);
   stackedApart(nodes);
@@ -69,7 +70,7 @@ test.fails('g42 flow() lays out nodes that never overlap, sized by their through
   near(size('a') / size('b'), 30 / 11, 0.05);   // the larger of in/out for a is 30; b: max(11, 11)
 });
 
-test.fails('g42 flow() reports a cycle, or handles it without overlapping or NaN', () => {
+test('g42 flow() reports a cycle, or handles it without overlapping or NaN', () => {
   const loop = [...moves, { source: 'out', target: 'in', value: 4 }];
   let result;
   try { result = need('flow')(loop, { source: 'source', target: 'target', value: 'value', width: 300, height: 200 }); } catch (e) {
@@ -85,7 +86,7 @@ test.fails('g42 flow() reports a cycle, or handles it without overlapping or NaN
 const rnd = seeded(7);
 const scatter = d3.range(80).map(() => ({ px: 40 + 25 * (rnd() + rnd() - 1) + (rnd() < 0.3 ? 30 : 0), py: 20 + 12 * (rnd() + rnd() - 1) }));
 
-test.fails('g43 hexbin counts sum to the row count, and count trains a colour scale two marks share', () => {
+test('g43 hexbin counts sum to the row count, and count trains a colour scale two marks share', () => {
   const cells = need('hexbin')(scatter, { x: 'px', y: 'py', binWidth: 10, width: 200, height: 120 });
   expect(d3.sum(cells, c => c.count)).toBe(scatter.length);
   cells.forEach(c => { expect(c.count).toBeGreaterThan(0); expect(c.points).toHaveLength(6); });
@@ -99,7 +100,7 @@ test.fails('g43 hexbin counts sum to the row count, and count trains a colour sc
 
 /* ---------- g44: contours and cells as statistics plus a polygon mark ---------- */
 
-test.fails('g44 contours() of a grid return rings at the requested level', () => {
+test('g44 contours() of a grid return rings at the requested level', () => {
   const n = 41, field = d3.range(n * n).map(i => { const x = ((i % n) - 20) / 10, y = (Math.floor(i / n) - 20) / 10; return Math.exp(-(x * x + y * y)); });
   const rings = need('contours')(field, { width: n, height: n, thresholds: [0.5] });
   const level = rings.filter(r => r.level === 0.5);
@@ -109,7 +110,7 @@ test.fails('g44 contours() of a grid return rings at the requested level', () =>
   expect(compile({ width: 200, height: 200, data: level, children: [polygons] }).scene.marks).toHaveLength(level.length);
 });
 
-test.fails('g44 densityContours() of points nest: higher levels enclose less area', () => {
+test('g44 densityContours() of points nest: higher levels enclose less area', () => {
   const r = seeded(11);
   const cloud = d3.range(120).map(() => ({ x: 5 * (r() + r() - 1), y: 5 * (r() + r() - 1) }));
   const rings = need('densityContours')(cloud, { x: 'x', y: 'y', bandwidth: 1, thresholds: 4 });
@@ -119,7 +120,7 @@ test.fails('g44 densityContours() of points nest: higher levels enclose less are
   d3.pairs(levels).forEach(([lo, hi]) => expect(area(hi)).toBeLessThan(area(lo)));
 });
 
-test.fails('g44 delaunay() cells satisfy the empty-circle rule and the triangle count', () => {
+test('g44 delaunay() cells satisfy the empty-circle rule and the triangle count', () => {
   const r = seeded(3);
   const sites = d3.range(9).map(() => ({ x: 100 * r(), y: 100 * r() }));
   const tris = need('delaunay')(sites, { x: 'x', y: 'y' });
@@ -137,8 +138,7 @@ test.fails('g44 delaunay() cells satisfy the empty-circle rule and the triangle 
 
 /* ---------- g45: a beeswarm ---------- */
 
-// Documented as a mark (`Swarm`) in this example; a pixel-stage position would be the alternative
-// (GAPS 3.14 decides). The assertion is the same either way: nothing overlaps.
+// `Swarm` is a mark (SPEC 5.2), not a pixel-stage position: the assertion is that nothing overlaps.
 const rs = seeded(21);
 const readingsPerGroup = ['low', 'mid', 'high'].flatMap((g, k) => d3.range(14).map(() => ({ g, v: 10 + 6 * k + 2 * (rs() + rs() - 1) })));
 const R = 3;
@@ -150,7 +150,7 @@ test('g45 without a swarm, clustered dots overlap (the problem)', () => {
   expect(overlapping.length).toBeGreaterThan(0);
 });
 
-test.fails('g45 a swarm keeps every dot on its value and no two dots overlap', () => {
+test('g45 a swarm keeps every dot on its value and no two dots overlap', () => {
   const swarm = tap(need('Swarm')({ r: R }));
   const { scene } = compile({ width: 160, height: 100, data: readingsPerGroup, x: 'g', y: 'v', children: [swarm] });
   const c = scene.marks.filter(s => s.t === 'circle');

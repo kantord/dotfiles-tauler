@@ -21,9 +21,9 @@ export { default as WeatherSummary } from './display/WeatherSummary.jsx';
 
 export { Plot } from './charts/Plot.jsx';
 export { chartTheme } from './charts/theme.jsx';
-export { Layer, Scale, Axis, Grid, defineMark, stack, dodge, colorScale } from './charts/core.jsx';
-export { Line, Area, Rect, Bar, Dot, Link, Text, Arc } from './charts/marks.jsx';
-export { bin, bin2d, group, rolling, cumsum, kde, ecdf, boxStats } from './charts/stats.jsx';
+export { Layer, Scale, Axis, Grid, Legend, defineMark, stack, dodge, jitter, jitterPx, geo, polar, colorScale, sizeScale, shapeScale, opacityScale, defineScale, defineGuide, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath } from './charts/core.jsx';
+export { Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group } from './charts/marks.jsx';
+export { bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange } from './charts/stats.jsx';
 export { Treemap, Tree, Pack, Partition } from './charts/hierarchy.jsx';
 export { Geo, GeoDot } from './charts/geo.jsx';
 

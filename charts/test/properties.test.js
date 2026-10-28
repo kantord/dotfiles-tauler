@@ -86,9 +86,11 @@ test('stack expand: no pile reaches past 1 either way', () => {
 test('dodge: slots are inside the band and never overlap', () => {
   fc.assert(fc.property(stackRows, fc.double({ min: 0, max: 0.9, noNaN: true }), (rows, padding) => {
     dodge({ padding })(rows);
-    const slots = d3.sort(new Map(rows.map(r => [r.color, [r.u1, r.u2]])).values(), s => s[0]);
-    for (const [u1, u2] of slots) { expect(u1).toBeGreaterThanOrEqual(0); expect(u2).toBeLessThanOrEqual(1 + 1e-9); expect(u2).toBeGreaterThan(u1); }
-    for (let i = 1; i < slots.length; i++) expect(slots[i][0]).toBeGreaterThanOrEqual(slots[i - 1][1] - 1e-9);
+    for (const band of d3.group(rows, r => r.x).values()) {   // each band shares itself among the series in it
+      const slots = d3.sort(new Map(band.map(r => [r.color, [r.u1, r.u2]])).values(), s => s[0]);
+      for (const [u1, u2] of slots) { expect(u1).toBeGreaterThanOrEqual(0); expect(u2).toBeLessThanOrEqual(1 + 1e-9); expect(u2).toBeGreaterThan(u1); }
+      for (let i = 1; i < slots.length; i++) expect(slots[i][0]).toBeGreaterThanOrEqual(slots[i - 1][1] - 1e-9);
+    }
   }));
 });
 

@@ -7,6 +7,20 @@
 // figures by a key hashed from the scene, so nothing here may read the clock or Math.random:
 // take the time from a stream and pass it in. SPEC.md is the design.
 import * as d3 from 'd3';
+import { AXES, SCALE_CHANNELS, DEFAULT, isNumber, isDate, optionsFor, trainDomains, buildScale, rangeOf, scaleTypes } from './scales.jsx';
+import { GUIDES, defineGuide, guideOf, checkChannel, claimRoom, gridShapes, niceCount, finalTicks } from './guides.jsx';
+import { stack, dodge, jitter, jitterPx, isPixelStage } from './positions.jsx';
+import { CLIP_BLEED, context, bindScales, tidy, hash53 } from './scene.jsx';
+import { geo, coordOf } from './coord.jsx';
+import { polar } from './polar.jsx';
+import { measureFor } from './fonts.jsx';
+
+// The public surface stays here: callers import from core.jsx only.
+export { colorScale, sizeScale, shapeScale, opacityScale, defineScale, defineChannel } from './scales.jsx';
+export { defineGuide, stack, dodge, jitter, jitterPx, geo, polar };
+export { linearGradient, radialGradient, pattern, hatch } from './paint.jsx';
+export { blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath } from './defs.jsx';
+export { text, hash53, drawScene, FONT_SIZE } from './scene.jsx';
 
 export const defaultTheme = {
   ink: '#142030', muted: '#5b6879',
@@ -15,13 +29,9 @@ export const defaultTheme = {
   font: 'ui-monospace, monospace',
 };
 
-// Text width without a DOM: exact for a monospace font, where every character is 0.6 em wide.
+// Text width in a monospace font, where every character is 0.6 em wide: `measureFor(font)` (fonts.jsx)
+// is what a Plot uses, and gives this for monospace and unknown fonts.
 export const defaultMeasure = (text, size) => String(text).length * size * 0.6;
-
-const CHANNELS = ['x', 'x1', 'x2', 'y', 'y1', 'y2', 'color', 'group'];
-const AXES = { x: ['x', 'x1', 'x2'], y: ['y', 'y1', 'y2'] };
-const TICK_SIZE = 4, TICK_PADDING = 6, CLIP_BLEED = 4;
-export const FONT_SIZE = 11;
 
 /* ---------- descriptors: what JSX evaluates to ---------- */
 
@@ -30,19 +40,26 @@ export const FONT_SIZE = 11;
 //
 // A mark is `render(rows, ctx) -> shapes`, plus an optional `domain(rows, props, scaleOptions)`
 // returning `{ x?: [...], y?: [...] }`, values the continuous scales must cover. `color` names
-// the style prop the colour channel feeds ('fill', or 'stroke' for line-like marks).
-export const defineMark = (name, { render, domain, color = 'fill' }) =>
-  (props = {}) => ({ $: 'mark', mark: name, render, domain, color, props });
+// the style prop the colour channel feeds ('fill', or 'stroke' for line-like marks); `size` the
+// one the size channel feeds (none: a `size` prop on the mark throws). `room(rows, props, env)`
+// returns the margin the mark needs, `{ top?, right?, bottom?, left? }` in pixels (SPEC 5.7).
+export const defineMark = (name, { render, domain, room, color = 'fill', size }) =>
+  (props = {}) => ({ $: 'mark', mark: name, render, domain, room, color, size, props });
 const piece = kind => (props = {}) => ({ $: kind, props });
 
 export const Layer = piece('layer');   // shares data and channels with the marks inside it
 export const Scale = piece('scale');
 export const Axis = piece('axis');
 export const Grid = piece('grid');
+export const Legend = piece('legend');
 
+// `key` is a channel (a row's identity, never trained); on the Plot it is the figure's key.
+// An `opacity` that is not a field name is the style prop, not the channel.
 const pickChannels = props => {
   const channels = {};
-  for (const c of CHANNELS) if (props[c] !== undefined) channels[c] = props[c];
+  for (const c of [...Object.values(SCALE_CHANNELS).flat(), 'group', 'key']) {
+    if (props[c] !== undefined && (c !== 'opacity' || typeof props[c] === 'string')) channels[c] = props[c];
+  }
   return channels;
 };
 // A mark inherits every channel it does not set, except that setting any channel of an axis
@@ -59,10 +76,36 @@ function inherit(inherited, own) {
 // A channel is a field name, a function of the datum, an array (one value per row: columnar
 // data), or a constant.
 const accessor = v => typeof v === 'function' ? v : typeof v === 'string' ? d => d[v]
-  : Array.isArray(v) ? (d, i) => v[i] : () => v;
+  : Array.isArray(v) ? (_, i) => v[i] : () => v;
 // ±Infinity is a constant too: the plot's edge.
 const isConstant = v => typeof v === 'number' || v instanceof Date;
-const keyOf = v => v instanceof Date ? +v : v;
+
+// `Layer scale` and a mark's `scale={{ y: 'rain' }}`: the named scales a layer binds, per channel.
+// A mark's own binding wins, key by key, over its Layer's.
+const bindings = (inherited, props) => ({ ...inherited, ...(props.scale?.constructor === Object ? props.scale : {}) });
+// After collection (a Scale may be written after the marks that bind it): every name is declared.
+function checkNames(spec) {
+  const declared = channel => ['(default)', ...Object.keys(spec.scales[channel] ?? {}).filter(n => n !== DEFAULT)];
+  const check = (piece, channel, name) => {
+    if (name === DEFAULT || spec.scales[channel]?.[name]) return;
+    throw new Error(`${piece} ${channel}: unknown scale "${name}"; declared: ${declared(channel).join(', ')}`);
+  };
+  for (const l of spec.layers) for (const [channel, name] of Object.entries(l.scale)) {
+    checkChannel(l.mark, channel, Object.keys(SCALE_CHANNELS));
+    check(l.mark, channel, name);
+  }
+  for (const g of spec.guides) if (g.props.scale !== undefined) check(g.kind === 'axis' ? 'Axis' : 'Legend', g.props.channel ?? (g.kind === 'axis' ? 'x' : 'color'), g.props.scale);
+  for (const g of spec.grids) if (g.scale !== undefined) check('Grid', g.channel ?? 'y', g.scale);
+}
+
+// `<Scale channel name>` declares a named scale (once); without a name it is the channel's
+// default, and repeated declarations merge.
+function scaleDeclared(spec, props) {
+  const byName = (spec.scales[props.channel] ??= {});
+  if (props.name === undefined || props.name === DEFAULT) byName[DEFAULT] = { ...byName[DEFAULT], ...props };
+  else if (props.name in byName) throw new Error(`Scale ${props.channel}: name "${props.name}" declared twice`);
+  else byName[props.name] = props;
+}
 
 // Wrapper components have already run, so whatever they returned is just more descriptors.
 function collect(node, inherited, spec) {
@@ -72,25 +115,52 @@ function collect(node, inherited, spec) {
   switch (node.$) {
     case 'mark': {
       const { children, data, ...rest } = props;
-      spec.layers.push({ mark: node.mark, render: node.render, domain: node.domain, color: node.color, props: rest, ownData: data ?? inherited.layerData,
+      if (rest.size !== undefined && !node.size) throw new Error(`${node.mark}: has no size to set; 'size' is not a channel of this mark`);
+      spec.layers.push({ mark: node.mark, render: node.render, domain: node.domain, room: node.room, color: node.color, size: node.size, props: rest,
+        position: rest.position ?? inherited.position, scale: bindings(inherited.scale, rest), ownData: data ?? inherited.layerData,
         data: data ?? inherited.data, channels: inherit(inherited.channels, pickChannels(rest)) });
       break;
     }
     case 'layer':
-      collect(props.children, { data: props.data ?? inherited.data, layerData: props.data ?? inherited.layerData, channels: inherit(inherited.channels, pickChannels(props)) }, spec);
+      collect(props.children, { data: props.data ?? inherited.data, layerData: props.data ?? inherited.layerData, position: props.position ?? inherited.position, scale: bindings(inherited.scale, props), channels: inherit(inherited.channels, pickChannels(props)) }, spec);
       break;
-    case 'scale': spec.scales[props.channel] = { ...spec.scales[props.channel], ...props }; break;
-    case 'axis': spec.axes.push(props); break;
-    case 'grid': spec.grids.push(props); break;
+    case 'scale':
+      checkChannel('Scale', props.channel, Object.keys(SCALE_CHANNELS));
+      if (props.type !== undefined && !scaleTypes().includes(props.type)) {
+        throw new Error(`Scale ${props.channel}: unknown type '${props.type}' (use ${scaleTypes().join(', ')})`);
+      }
+      scaleDeclared(spec, props); break;
+    case 'grid': checkChannel('Grid', props.channel ?? 'y', Object.keys(AXES)); spec.grids.push(props); break;
+    default: {
+      const guide = guideOf(node.$, props);
+      if (!guide) throw new Error(`Plot: ${node.type !== undefined ? `'${node.type}'` : 'an object'} is not a mark, Layer, Scale, Axis, Grid or Legend`);
+      guide.check?.(props);
+      spec.guides.push({ kind: node.$, props, guide });
+    }
   }
   return spec;
 }
 
 /* ---------- rows: each datum's channel values ---------- */
 
+// A `position` array splits by tag: the data-space entries run before the scales exist, the
+// `stage: 'pixel'` ones after (SPEC 4, stage 7); a data-space entry may not follow a pixel one.
+const positionsOf = layer => [layer.position ?? []].flat();
+function dataPositions(layer) {
+  const all = positionsOf(layer), first = all.findIndex(isPixelStage);
+  if (first >= 0 && all.slice(first).some(p => !isPixelStage(p))) {
+    throw new Error(`${layer.mark}: a data-space position cannot follow a pixel-stage one; list data-space positions first`);
+  }
+  return first < 0 ? all : all.slice(0, first);
+}
+
 export const top = row => row.y2 ?? row.y;
 
-function evaluate(layer, options) {
+const asDate = v => v != null && !isDate(v) && !(isNumber(v) && !Number.isFinite(v)) ? new Date(v) : v;
+
+// Returns the layer's rows; `layer.channels` may be replaced by an annotation's constants.
+function evaluate(layer, declared) {
+  const options = optionsFor(layer, declared);
   let data = layer.data ?? [];
   const own = Object.entries(pickChannels(layer.props)).filter(([, v]) => v !== null);
   // An annotation (`<Link y1={90} y2={90} x1={-Infinity} x2={Infinity}/>`): no data of its own
@@ -103,7 +173,7 @@ function evaluate(layer, options) {
   const columns = Object.values(layer.channels).filter(Array.isArray);
   if (layer.data === undefined && columns.length) data = d3.range(d3.max(columns, c => c.length));
   const accessors = Object.entries(layer.channels).map(([c, v]) => [c, accessor(v)]);
-  layer.rows = data.map((d, i) => {
+  let rows = data.map((d, i) => {
     const row = { d };
     for (const [c, get] of accessors) row[c] = get(d, i);
     return row;
@@ -111,406 +181,104 @@ function evaluate(layer, options) {
   // JSON has no Dates: a declared time scale reads strings and numbers as dates.
   for (const [name, channels] of Object.entries(AXES)) {
     if (options[name]?.type !== 'time') continue;
-    for (const r of layer.rows) for (const c of channels) {
-      if (r[c] != null && !isDate(r[c]) && !(isNumber(r[c]) && !Number.isFinite(r[c]))) r[c] = new Date(r[c]);
-    }
+    for (const r of rows) for (const c of channels) r[c] = asDate(r[c]);
   }
-  if (layer.props.position) layer.rows = layer.props.position(layer.rows, { props: layer.props, mark: layer.mark });
-  return layer;
+  for (const position of dataPositions(layer)) rows = position(rows, { props: layer.props, mark: layer.mark, scales: options });
+  return rows;
 }
 
-/* ---------- positions: rows -> rows, in data space, before any scale exists ---------- */
+/* ---------- compile: an ordered list of stages, each (state) -> state ---------- */
 
-const seriesOf = by => typeof by === 'function' ? by : by ? r => r[by] : r => r.group ?? r.color;
-const firstSeen = (rows, get) => [...new Set(rows.map(r => keyOf(get(r))))];
-
-// Piles rows sharing `groupBy` along `along`, writing `y1 y2` (`x1 x2`), series in first-seen
-// order; negatives pile downward from 0. `expand` scales each pile to 1. For an Area, a series
-// missing at some `groupBy` value gets a 0 there, so the band above does not jump.
-export const stack = ({ by, along = 'y', groupBy, offset = 'zero' } = {}) => (rows, { mark }) => {
-  // By default rows pile by their position across: `x`, or `x1` for interval bars (a histogram).
-  const across = along === 'y' ? 'x' : 'y';
-  groupBy ??= rows.some(r => r[across] != null) ? across : across + '1';
-  const series = seriesOf(by), order = firstSeen(rows, series);
-  if (mark === 'area') {
-    const templates = new Map(rows.map(r => [keyOf(series(r)), r]));
-    for (const pile of d3.group(rows, r => keyOf(r[groupBy])).values()) {
-      const present = new Set(pile.map(r => keyOf(series(r))));
-      for (const [key, template] of templates) {
-        if (!present.has(key)) rows.push({ ...template, d: null, [groupBy]: pile[0][groupBy], [along]: 0 });
+// State (SPEC 4): { props, env, spec, rows, domains, claims, margin, area, scales, scene }.
+// `rows[i]` belongs to `spec.layers[i]`. `domains` and `scales` are keyed `[channel][name]`.
+// `claims` is the room the guides ask for ({ margin, data }). A stage returns a new state.
+const stages = [
+  function collectStage(s) {
+    const { props } = s;
+    // The coord's default channels (`geo`: lon, lat) are inherited like any other.
+    const channels = inherit(s.env.coord?.channels ?? {}, pickChannels({ ...props, key: undefined }));
+    const spec = collect(props.children, { data: props.data, channels, scale: {} },
+      { layers: [], scales: {}, guides: [], grids: [] });
+    checkNames(spec);
+    // A declared time scale's `domain` reads strings and numbers as dates too, like the rows.
+    for (const channel of Object.keys(AXES)) for (const [name, opt] of Object.entries(spec.scales[channel] ?? {})) {
+      if (opt.type === 'time' && opt.domain) spec.scales[channel][name] = { ...opt, domain: opt.domain.map(asDate) };
+    }
+    return { ...s, spec };
+  },
+  s => ({ ...s, rows: s.spec.layers.map(layer => evaluate(layer, s.spec.scales)) }),
+  function trainStage(s) {
+    const domains = trainDomains(s.spec.layers, s.rows, s.spec.scales);
+    if (s.env.coord && !s.env.coord.positions) { delete domains.x; delete domains.y; }   // geo ignores the position scales; polar reads them
+    return { ...s, domains };
+  },
+  function claimStage(s) {
+    const { width, height } = s.props;
+    return { ...s, claims: claimRoom(s.spec.guides, s.domains, width, height, s.env, s.spec.layers.map((l, i) => l.room?.(s.rows[i], l.props, s.env) ?? {})) };
+  },
+  function areaStage(s) {
+    const { width, height } = s.props;
+    const margin = { ...s.claims.margin, ...s.props.margin };
+    const area = { left: margin.left, top: margin.top, right: width - margin.right, bottom: height - margin.bottom };
+    area.width = area.right - area.left; area.height = area.bottom - area.top;
+    const bound = s.env.coord?.bind(area);
+    const env = bound ? { ...s.env, bound, projection: bound.projection } : s.env;
+    return { ...s, margin, area, env };
+  },
+  function scaleStage(s) {
+    const { domains, area, env } = s, scales = {};
+    for (const [channel, byName] of Object.entries(domains)) {
+      for (const [name, domain] of Object.entries(byName)) {
+        const range = rangeOf(channel, domain, area);
+        (scales[channel] ??= {})[name] = buildScale(domain, range, env.theme, channel, range && niceCount(s.spec.guides, channel, name, Math.abs(range[1] - range[0])));
       }
     }
-  }
-  const [start, end] = [along + '1', along + '2'];
-  for (const pile of d3.group(rows, r => keyOf(r[groupBy])).values()) {
-    const sorted = d3.sort(pile, r => order.indexOf(keyOf(series(r))));
-    let up = 0, down = 0;
-    for (const r of sorted) {
-      const v = Number.isFinite(r[along]) ? r[along] : 0;   // null, NaN: nothing to pile
-      if (v >= 0) { r[start] = up; r[end] = up += v; } else { r[start] = down; r[end] = down += v; }
-    }
-    const total = up - down;
-    if (offset === 'expand' && total > 0) for (const r of pile) { r[start] /= total; r[end] /= total; }
-  }
-  return rows;
-};
-
-// Gives each series a slot of its band: `u1 u2`, fractions of the band that Rect applies on its
-// band axis. Never trained, so it needs no scale.
-export const dodge = ({ by, padding = 0.1 } = {}) => rows => {
-  const series = seriesOf(by), order = firstSeen(rows, series), slot = 1 / order.length;
-  for (const r of rows) {
-    const i = order.indexOf(keyOf(series(r)));
-    r.u1 = (i + padding / 2) * slot;
-    r.u2 = (i + 1 - padding / 2) * slot;
-  }
-  return rows;
-};
-
-/* ---------- scales: domains trained across every layer ---------- */
-
-// What a row trains on an axis: its interval when it has one, else its point. Edges
-// (±Infinity) train nothing.
-function trainable(row, [point, start, end]) {
-  const values = row[start] != null || row[end] != null ? [row[start], row[end]] : [row[point]];
-  return values.filter(v => v != null && !(typeof v === 'number' && !Number.isFinite(v)));
-}
-const SCALE_CHANNELS = { ...AXES, color: ['color'] };
-
-const isNumber = v => typeof v === 'number';
-const isDate = v => v instanceof Date;
-
-// Every value decides: all Dates -> time, all numbers -> linear, anything else -> band.
-// Colour: all numbers -> sequential, else ordinal.
-function inferType(name, values) {
-  const numbers = values.every(isNumber);
-  if (name === 'color') return numbers ? 'sequential' : 'ordinal';
-  return values.every(isDate) ? 'time' : numbers ? 'linear' : 'band';
-}
-
-function trainDomains(layers, options) {
-  const hints = {}, trained = {};
-  for (const l of layers) {
-    for (const [name, values] of Object.entries(l.domain?.(l.rows, l.props, options) ?? {})) (hints[name] ??= []).push(...values);
-  }
-  for (const [name, channels] of Object.entries(SCALE_CHANNELS)) {
-    const opt = options[name] ?? {};
-    const values = [];
-    for (const l of layers) for (const r of l.rows) values.push(...trainable(r, channels));
-    if (!values.length && !opt.domain) continue;
-    trained[name] = { opt, values, type: opt.type ?? inferType(name, values.length ? values : opt.domain) };
-  }
-  const domains = {};
-  for (const [name, { opt, values, type }] of Object.entries(trained)) {
-    let domain = opt.domain;
-    if (!domain && (type === 'band' || type === 'ordinal')) {
-      domain = [...new d3.InternSet(values)];
-      if (domain.every(isNumber) || domain.every(isDate)) domain.sort(d3.ascending);
-    } else if (!domain) {
-      domain = d3.extent(type === 'linear' || type === 'time' ? [...values, ...(hints[name] ?? [])] : values);
-    }
-    if (type === 'log') {
-      const bad = [...domain, ...values].find(v => !(v > 0));
-      if (bad !== undefined) throw new Error(`Scale ${name}: a log scale needs values > 0, got ${bad}`);
-    }
-    // Bars get gaps; a grid of two band axes (heatmap, Gantt rows) does not.
-    const other = trained[name === 'x' ? 'y' : 'x'];
-    const padding = opt.padding ?? (other?.type === 'band' ? 0 : 0.2);
-    domains[name] = { type, domain, opt, padding, nice: !opt.domain && ['linear', 'log', 'time'].includes(type) };
-  }
-  return domains;
-}
-
-// The ordinal colour scale Plot uses, for drawing a legend beside the figure.
-export function colorScale(domain, theme, range = theme.palette) {
-  const index = new Map(domain.map((v, i) => [keyOf(v), i]));
-  const scale = v => range[(index.get(keyOf(v)) ?? 0) % range.length];
-  scale.domain = () => domain.slice();
-  return scale;
-}
-
-function buildScale({ type, domain, opt, padding, nice }, range, theme) {
-  if (type === 'ordinal') return colorScale(domain, theme, opt.range);
-  if (type === 'sequential') {
-    // Any number of stops: at the domain's values when it has one per stop (three around a
-    // pivot make it diverging), else spread evenly over its extent. Clamped, like d3's own.
-    const stops = opt.range ?? [d3.interpolateRgb(theme.line, theme.palette[0])(0.15), theme.palette[0]];
-    const [low, high] = d3.extent(domain);
-    const at = domain.length === stops.length ? domain : stops.map((_, i) => low + (i / (stops.length - 1)) * (high - low));
-    return d3.scaleLinear(at, stops).interpolate(d3.interpolateRgb).clamp(true);
-  }
-  const scale = type === 'band' ? d3.scaleBand(domain, range).paddingInner(padding).paddingOuter(padding / 2)
-    : type === 'time' ? d3.scaleTime(domain, range)
-    : type === 'log' ? d3.scaleLog(domain, range)
-    : d3.scaleLinear(domain, range);
-  if (nice) {
-    // nice() only ever widens, except at float precision, where d3 can shrink the domain.
-    const [low, high] = d3.extent(domain), niced = scale.copy().nice();
-    const [a, b] = d3.extent(niced.domain());
-    if (a <= low && b >= high) scale.domain(niced.domain());
-  }
-  return scale;
-}
-
-// Where a value sits: the middle of its band on a band scale.
-const at = (scale, v) => scale.bandwidth ? scale(v) + scale.bandwidth() / 2 : scale(v);
-
-/* ---------- axes: ticks, and the margins their labels need ---------- */
-
-const isHorizontal = axis => (axis.channel ?? 'x') === 'x';   // x axes sit below, y axes to the left
-
-// `ticks` is a count (a hint, as in d3), a d3 time interval, or the exact values.
-const tickCount = (axis, length) => axis.ticks ?? Math.max(2, Math.round(length / (isHorizontal(axis) ? 90 : 42)));
-
-function tickValues(scale, axis, length) {
-  if (Array.isArray(axis.ticks)) return axis.ticks;
-  if (scale.bandwidth) {   // a count keeps every k-th band
-    const k = axis.ticks > 0 ? Math.ceil(scale.domain().length / axis.ticks) : 1;
-    return scale.domain().filter((_, i) => i % k === 0);
-  }
-  return scale.ticks(tickCount(axis, length));
-}
-
-// `format` is a d3 format string ("%H:%M" for dates, ".0%" for numbers) or a function. With
-// neither, the scale's own format for the tick count: on a log scale it blanks crowded labels.
-function tickFormat(scale, axis, ticks, length) {
-  const { format } = axis;
-  if (typeof format === 'function') return format;
-  const dates = ticks[0] instanceof Date;
-  if (typeof format === 'string') return dates ? d3.timeFormat(format) : d3.format(format);
-  // Dates on a band: d3's time-axis format, at each value's own precision (an hour, a day...).
-  if (scale.bandwidth) return v => v instanceof Date ? d3.scaleTime().tickFormat()(v) : String(v);
-  return dates ? scale.tickFormat() : scale.tickFormat(Array.isArray(axis.ticks) ? ticks.length : tickCount(axis, length));
-}
-
-function tickLabels(scale, axis, length, measure) {
-  const ticks = tickValues(scale, axis, length), format = tickFormat(scale, axis, ticks, length);
-  let labels = ticks.map((value, i) => ({ value, label: String(format(value, i) ?? '') }));
-  // Unless told which, a band axis labels every k-th band, so that labels never overlap.
-  if (scale.bandwidth && axis.ticks == null && labels.length > 1) {
-    const room = isHorizontal(axis) ? d3.max(labels, l => measure(l.label, FONT_SIZE)) + 6 : FONT_SIZE + 2;
-    const k = Math.ceil(room / scale.step());
-    labels = labels.filter((_, i) => i % k === 0);
-  }
-  return labels;
-}
-
-// `label`, shortened with an ellipsis until it measures at most `room` px.
-function fit(label, room, measure) {
-  if (measure(label, FONT_SIZE) <= room) return label;
-  let cut = label;
-  while (cut && measure(cut + '…', FONT_SIZE) > room) cut = cut.slice(0, -1);
-  return cut.trimEnd() + '…';
-}
-
-// The margins the axes' labels need, and those labels. Labels are computed once, against a
-// scale of the estimated length: tick values do not depend on the range, only their pixels do.
-// `fixed` (the `margin` prop) overrides any side.
-function margins(axes, domains, width, height, env, fixed = {}) {
-  const margin = { top: 8, right: 8, bottom: 8, left: 8 }, ticks = new Map();
-  for (const axis of axes) {
-    const domain = domains[axis.channel ?? 'x']; if (!domain) continue;
-    const horizontal = isHorizontal(axis);
-    const length = Math.max(60, horizontal ? width - 80 : height - 40);
-    const scale = buildScale(domain, [0, length], env.theme);
-    ticks.set(axis, tickLabels(scale, axis, length, env.measure));
-    const labels = ticks.get(axis).map(t => t.label);
-    const widest = d3.max(labels, l => env.measure(l, FONT_SIZE)) ?? 0;
-    if (horizontal) {
-      margin.bottom = Math.max(margin.bottom, TICK_SIZE + TICK_PADDING + FONT_SIZE + 3);
-      if (!scale.bandwidth && labels.length) {   // the end labels overhang the plot area
-        margin.left = Math.max(margin.left, Math.ceil(env.measure(labels[0], FONT_SIZE) / 2) + 2);
-        margin.right = Math.max(margin.right, Math.ceil(env.measure(labels.at(-1), FONT_SIZE) / 2) + 2);
-      }
-    } else {
-      // Labels take at most a third of the width; longer ones are cut with an ellipsis.
-      const room = width / 3;
-      if (widest > room) for (const t of ticks.get(axis)) t.label = fit(t.label, room, env.measure);
-      margin.left = Math.max(margin.left, Math.ceil(TICK_SIZE + TICK_PADDING + Math.min(widest, room)) + 2);
-    }
-  }
-  return { margin: { ...margin, ...fixed }, ticks };
-}
-
-/* ---------- scene: plain shapes with explicit style ---------- */
-
-const line = (x1, y1, x2, y2, style) => ({ t: 'line', x1, y1, x2, y2, ...style });
-export const text = (x, y, content, style) => ({ t: 'text', x, y, text: content, fontSize: FONT_SIZE, ...style });
-// A full-width or full-height line across the plot area at `p`.
-const across = (area, horizontal, p, style) =>
-  horizontal ? line(area.left, p, area.right, p, style) : line(p, area.top, p, area.bottom, style);
-
-// What a mark's render() gets: pixel positions, the plot area, and how to read its props.
-function context(layer, scales, area, env) {
-  const { props, color: target } = layer, { theme } = env;
-  // value -> pixel, the band centre on a band scale; ±Infinity is the plot's edge.
-  // A plot of only ±Infinity annotations trains no scale; its edges still have positions.
-  const position = (scale, low, high) => v =>
-    v === -Infinity ? low : v === Infinity ? high : !scale ? NaN : scale.bandwidth ? scale(v) + scale.bandwidth() / 2 : scale(v);
-  const bandwidth = scale => () => scale?.bandwidth?.() ?? 0;
-  return {
-    x: position(scales.x, area.left, area.right),
-    y: position(scales.y, area.bottom, area.top),
-    color: scales.color,
-    area,
-    bandwidth: { x: bandwidth(scales.x), y: bandwidth(scales.y) },
-    theme, props,
-    // A style prop: a function of the datum, else a constant, else (for the prop the colour
-    // channel feeds) the colour scale, else `fallback`.
-    resolve(row, prop, fallback) {
-      const v = props[prop];
-      if (typeof v === 'function') return v(row.d);
-      if (v != null) return v;
-      if (prop !== target) return fallback;
-      return row.color != null && scales.color ? scales.color(row.color) : fallback ?? theme.palette[0];
-    },
-    // A value prop: a field name or a function of the datum.
-    field(row, prop) {
-      const v = props[prop];
-      return typeof v === 'function' ? v(row.d) : typeof v === 'string' ? row.d?.[v] : v;
-    },
-    measure: env.measure,
-    projection: env.projection,   // a d3-geo projection fitted to the area, when the Plot has one
-  };
-}
-
-// The Plot's `projection` (a d3-geo name such as 'equal-earth', or a projection) fitted to the
-// plot area around `fit` (GeoJSON; the whole globe by default).
-function fitProjection({ projection, fit }, area) {
-  let p = projection;
-  if (typeof p === 'string') {
-    const make = d3['geo' + p.replace(/(?:^|-)(\w)/g, (_, c) => c.toUpperCase())];
-    if (!make) throw new Error(`Plot: d3 has no projection named '${projection}'`);
-    p = make();
-  }
-  return p.fitExtent([[area.left, area.top], [area.right, area.bottom]], fit ?? { type: 'Sphere' });
-}
-
-function axisShapes(axis, ticks, scales, area, theme) {
-  const scale = scales[axis.channel ?? 'x']; if (!scale) return [];
-  const horizontal = isHorizontal(axis);
-  const base = horizontal ? area.bottom : area.left;
-  const stroke = { stroke: theme.lineStrong, crisp: true };
-  const label = { fontFamily: theme.font, fill: theme.muted };
-  const shapes = [horizontal ? line(area.left, base, area.right, base, stroke) : line(base, area.top, base, area.bottom, stroke)];
-  for (const { value, label: content } of ticks) {
-    const p = at(scale, value); if (p == null || Number.isNaN(p)) continue;
-    if (horizontal) {
-      shapes.push(line(p, base, p, base + TICK_SIZE, stroke));
-      if (content) shapes.push(text(p, base + TICK_SIZE + TICK_PADDING, content, { ...label, dy: '0.71em', textAnchor: 'middle' }));
-    } else {
-      shapes.push(line(base - TICK_SIZE, p, base, p, stroke));
-      if (content) shapes.push(text(base - TICK_SIZE - TICK_PADDING, p, content, { ...label, dy: '0.32em', textAnchor: 'end' }));
-    }
-  }
-  return shapes;
-}
-
-// Lines between the bands of a band scale, or at the ticks of a scale: the ticks of the
-// channel's Axis when it has one (so lines and labels agree), unless `ticks` is given.
-function gridShapes(grid, axisTicks, scales, area, theme) {
-  const channel = grid.channel ?? 'y', scale = scales[channel]; if (!scale) return [];
-  const horizontal = channel === 'y';
-  let positions;
-  if (scale.bandwidth) {
-    const domain = scale.domain(), half = (scale.step() - scale.bandwidth()) / 2;
-    positions = [...domain.map(v => scale(v) - half), scale(domain.at(-1)) + scale.bandwidth() + half];
-  } else {
-    const values = grid.ticks == null && axisTicks ? axisTicks.map(t => t.value)
-      : tickValues(scale, { channel, ticks: grid.ticks }, horizontal ? area.height : area.width);
-    positions = values.map(scale);
-  }
-  const style = { stroke: grid.tone === 'soft' ? theme.lineSoft : theme.line, crisp: true };
-  return positions.map(p => across(area, horizontal, p, style));
-}
-
-/* ---------- compile ---------- */
-
-// cyrb53 (c) 2018 bryc, public domain or MIT, attribution appreciated
-// (https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js), seed 0:
-// 53 bits, so two different scenes practically never share a key (and a Picture).
-export function hash53(str) {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-  for (let i = 0; i < str.length; i++) {
-    const c = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 2654435761);
-    h2 = Math.imul(h2 ^ c, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
-const round = v => typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v;
-const tidy = shape => { const out = {}; for (const k in shape) if (shape[k] != null) out[k] = round(shape[k]); return out; };
+    return { ...s, scales };
+  },
+  // Pixel-stage positions (GAPS 1.3): rows get pixel offsets from the built scales and the area.
+  function pixelStage(s) {
+    const rows = s.rows.map((rs, i) => {
+      const layer = s.spec.layers[i], pixel = positionsOf(layer).filter(isPixelStage);
+      return pixel.reduce((acc, position) => position(acc, { props: layer.props, mark: layer.mark, scales: bindScales(layer, s.scales), area: s.area }), rs);
+    });
+    return { ...s, rows };
+  },
+  // Guides into `back`, then each mark's shapes, in child order (first child at the bottom).
+  function renderStage(s) {
+    const { spec, rows, scales, area, env, claims } = s;
+    // A grid draws at the ticks of the axis for its scale (the primary one unless it names one).
+    const ticksOf = (channel, name) => {
+      const guide = spec.guides.find(g => g.kind === 'axis' && (g.props.channel ?? 'x') === channel && (g.props.scale ?? DEFAULT) === (name ?? DEFAULT));
+      const data = guide && claims.data.get(guide), scale = scales[channel]?.[name ?? DEFAULT];
+      // A y axis ticks over the final height (see finalTicks); polar and custom guides keep their claim's.
+      return data && scale && channel === 'y' && !guide.props.guide && !env.coord?.positions ? finalTicks(guide.props, scale, area, env, data) : data?.ticks;
+    };
+    const valuesOf = (channel, name) => ticksOf(channel, name)?.map(t => t.value);
+    const back = [...spec.grids.flatMap(g => env.bound?.grid ? env.bound.grid(g, scales, env.theme, valuesOf) : gridShapes(g, ticksOf(g.channel ?? 'y', g.scale), scales, area, env.theme)),
+      ...spec.guides.flatMap(g => g.guide.shapes(g.props, claims.data.get(g), scales, area, env))];
+    const drawn = spec.layers.flatMap((l, i) => l.render(rows[i], context(l, scales, area, env)));
+    return { ...s, scene: { back, drawn } };
+  },
+  function assembleStage(s) {
+    const { area, scene: { back, drawn } } = s, { width, height } = s.props;
+    return { ...s, scene: {
+      width, height,
+      // Marks clip to the plot area plus 4px, so a dot on the edge stays whole.
+      clip: { x: area.left - CLIP_BLEED, y: area.top - CLIP_BLEED, w: area.width + 2 * CLIP_BLEED, h: area.height + 2 * CLIP_BLEED },
+      back: back.map(tidy),
+      marks: drawn.filter(sh => !sh.front).map(tidy),
+      front: drawn.filter(sh => sh.front).map(({ front, ...sh }) => tidy(sh)),   // text stays readable outside the clip
+    } };
+  },
+];
 
 // props: { width, height, data?, <channels>?, theme?, measure?, margin?, children }
 // Returns { scene, key }: the shapes to draw, and a hash of them that changes exactly when they do.
 export function compile(props) {
   const { width, height } = props;
   if (!(width > 0) || !(height > 0)) throw new Error('Plot: width and height must be positive numbers');
-  const env = { theme: { ...defaultTheme, ...props.theme }, measure: props.measure ?? defaultMeasure };
-  const spec = collect(props.children, { data: props.data, channels: pickChannels(props) },
-    { layers: [], scales: {}, axes: [], grids: [] });
-  for (const layer of spec.layers) evaluate(layer, spec.scales);
-  const domains = trainDomains(spec.layers, spec.scales);
-
-  const { margin, ticks } = margins(spec.axes, domains, width, height, env, props.margin);
-  const area = { left: margin.left, top: margin.top, right: width - margin.right, bottom: height - margin.bottom };
-  area.width = area.right - area.left; area.height = area.bottom - area.top;
-
-  if (props.projection != null) env.projection = fitProjection(props, area);
-  const scales = {};
-  if (domains.x) scales.x = buildScale(domains.x, [area.left, area.right], env.theme);
-  if (domains.y) scales.y = buildScale(domains.y, domains.y.type === 'band' ? [area.top, area.bottom] : [area.bottom, area.top], env.theme);
-  if (domains.color) scales.color = buildScale(domains.color, null, env.theme);
-
-  const ticksOf = channel => ticks.get(spec.axes.find(a => (a.channel ?? 'x') === channel));
-  const back = [...spec.grids.flatMap(g => gridShapes(g, ticksOf(g.channel ?? 'y'), scales, area, env.theme)),
-    ...spec.axes.flatMap(a => axisShapes(a, ticks.get(a) ?? [], scales, area, env.theme))];
-  const drawn = spec.layers.flatMap(l => l.render(l.rows, context(l, scales, area, env)));
-  const scene = {
-    width, height,
-    // Marks clip to the plot area plus 4px, so a dot on the edge stays whole.
-    clip: { x: area.left - CLIP_BLEED, y: area.top - CLIP_BLEED, w: area.width + 2 * CLIP_BLEED, h: area.height + 2 * CLIP_BLEED },
-    back: back.map(tidy),
-    marks: drawn.filter(s => !s.front).map(tidy),
-    front: drawn.filter(s => s.front).map(({ front, ...s }) => tidy(s)),   // text stays readable outside the clip
-  };
+  const theme = { ...defaultTheme, ...props.theme };
+  const env = { theme, measure: props.measure ?? measureFor(theme.font), coord: coordOf(props) };
+  const { scene } = stages.reduce((state, stage) => stage(state), { props, env });
   return { scene, key: hash53(JSON.stringify(scene)) };
-}
-
-/* ---------- draw: the only part that touches the DOM ---------- */
-
-// The scene schema (SPEC 5.5): SVG attribute names in camelCase, written kebab-cased.
-const GEOMETRY = {
-  rect: ['x', 'y', 'width', 'height', 'rx'],
-  circle: ['cx', 'cy', 'r'],
-  line: ['x1', 'y1', 'x2', 'y2'],
-  path: ['d'],
-  text: ['x', 'y', 'dy'],
-};
-const STYLE = ['fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'fillOpacity', 'opacity',
-  'textAnchor', 'fontSize', 'fontFamily', 'transform'];
-const kebab = name => name.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
-
-function drawShape(group, shape) {
-  const el = group.append(shape.t);
-  for (const k of [...GEOMETRY[shape.t], ...STYLE]) {
-    if (shape[k] == null) continue;
-    el.attr(kebab(k), shape.t === 'rect' && (k === 'width' || k === 'height') ? Math.max(0, shape[k]) : shape[k]);
-  }
-  if (shape.crisp) el.attr('shape-rendering', 'crispEdges');
-  if (shape.t === 'text') el.text(shape.text);
-}
-
-// Draws `scene` into `svg`, a d3 selection of an empty <svg>. `clipId` must be unique on the page.
-export function drawScene(svg, scene, clipId) {
-  const { clip } = scene;
-  svg.append('defs').append('clipPath').attr('id', clipId)
-    .append('rect').attr('x', clip.x).attr('y', clip.y).attr('width', clip.w).attr('height', clip.h);
-  for (const [shapes, clipped] of [[scene.back, false], [scene.marks, true], [scene.front, false]]) {
-    const group = svg.append('g');
-    if (clipped) group.attr('clip-path', `url(#${clipId})`);
-    for (const shape of shapes) drawShape(group, shape);
-  }
 }

@@ -1,15 +1,15 @@
 // Gap examples g32, g46, g47: small multiples, figures as a pure function of state, and keys that
-// match across runtimes (GAPS facet decision, interaction, 0.2).
+// match across runtimes (SPEC 5.8, interaction, 0.2).
 import { test, expect } from 'vitest';
 import * as d3 from 'd3';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { compile, Scale, Axis, Grid } from '../../core.jsx';
+import { compile, defineMark, Scale, Axis, Grid } from '../../core.jsx';
 import { Line, Rect, Dot, Text, Arc } from '../../marks.jsx';
 import { kde } from '../../stats.jsx';
 import { need, tap, near, seeded } from './support.js';
 
-/* ---------- g32: four small panels over shared scales (pending decision) ---------- */
+/* ---------- g32: four small panels over shared scales (the documented pattern) ---------- */
 
 const rnd = seeded(5);
 const readings = ['north', 'south', 'east', 'west'].flatMap((region, k) =>
@@ -33,17 +33,19 @@ test('g32 panels given the same domains share one plot area and one mapping (the
   }
 });
 
-// pending decision: a facet primitive versus the pattern above; `facet` and its fields are a guess.
-test.fails('g32 a facet helper gives every panel its rows and the shared domains, with no hand-computed extents', () => {
-  const panels = need('facet')(readings, { by: 'region' });
-  expect(panels.map(p => p.key)).toEqual(['north', 'south', 'east', 'west']);
-  panels.forEach(p => expect(p.data).toEqual(readings.filter(r => r.region === p.key)));
-  const ctxs = panels.map(p => {
+// Decided (SPEC 5.8): no facet piece. Colour trains first-seen per Plot, so the colour domain is
+// passed to every panel; without it one category gets a different colour in different panels.
+test('g32 with the colour domain passed, a category has the same colour in every panel', () => {
+  const kinds = ['a', 'b', 'c'];
+  const rows = [{ t: 0, v: 1, k: 'b' }, { t: 1, v: 2, k: 'a' }, { t: 0, v: 3, k: 'a' }, { t: 1, v: 4, k: 'c' }];
+  const colorOf = (data, pinned) => {
     const dots = tap(<Dot />);
-    compile({ width: 120, height: 90, data: p.data, x: 't', y: 'v', children: [dots, ...p.scales, <Axis channel="x" />, <Axis channel="y" />] });
-    return dots.seen[0].ctx;
-  });
-  for (const c of ctxs.slice(1)) { expect(c.area).toEqual(ctxs[0].area); near(c.y(25), ctxs[0].y(25), 1e-9); }
+    compile({ width: 120, height: 90, data, x: 't', y: 'v', color: 'k',
+      children: [dots, ...(pinned ? [<Scale channel="color" domain={kinds} />] : [])] });
+    return dots.seen[0].ctx.color('a');
+  };
+  expect(colorOf(rows.slice(0, 2), true)).toBe(colorOf(rows.slice(2), true));
+  expect(colorOf(rows.slice(0, 2), false)).not.toBe(colorOf(rows.slice(2), false));
 });
 
 /* ---------- g46: a figure is a pure function of explicit state ---------- */
@@ -97,7 +99,19 @@ test('g47 in Node, a boundary scene and trig scenes give the same key on every c
   for (const make of Object.values(scenes)) expect(compile(make()).key).toBe(compile(make()).key);
 });
 
-test.fails('g47 a golden-key file covers boundary, trig and kde scenes, and Node reproduces every key', () => {
+// `UPDATE_GOLDEN=1 npx vitest run charts/test/gaps/state-determinism` rewrites the file; review the diff.
+// tauler's side (a test that runs these scenes in its own runtime against this file) is a follow-up.
+test('g47 a golden-key file covers boundary, trig and kde scenes, and Node reproduces every key', () => {
+  if (process.env.UPDATE_GOLDEN) {
+    writeFileSync(GOLDEN, JSON.stringify(Object.fromEntries(Object.entries(scenes).map(([n, make]) => [n, compile(make()).key])), null, 2) + '\n');
+  }
   const golden = JSON.parse(readFileSync(GOLDEN, 'utf8'));   // charts/test/golden-keys.json, also read by tauler's own runtime test
   for (const [name, make] of Object.entries(scenes)) expect(golden[name]).toBe(compile(make()).key);
+});
+
+// tidy rounds shapes to 2 decimals; a value on an x.xx5 boundary rounds by its float bits.
+test('g47 a value on a rounding boundary rounds as float arithmetic says, in the scene', () => {
+  const Probe = defineMark('probe', { render: () => [{ t: 'rect', x: 1.005, y: 1.255, width: 1.115, height: 3 }] });
+  const { scene } = compile({ width: 50, height: 50, children: [Probe()] });
+  expect(scene.marks[0]).toMatchObject({ x: 1, y: 1.25, width: 1.12, height: 3 });
 });

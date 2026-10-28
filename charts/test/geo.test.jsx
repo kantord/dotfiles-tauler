@@ -3,8 +3,10 @@ import { test, expect, beforeEach } from 'vitest';
 import * as d3 from 'd3';
 import { drawFigure, figureKeys, resetFigures } from '../../test/tauler.js';
 import { Plot } from '../Plot.jsx';
-import { compile } from '../core.jsx';
+import { compile, geo } from '../core.jsx';
 import { Geo, GeoDot } from '../geo.jsx';
+import { Line, Dot } from '../marks.jsx';
+import { BUDGET, costOf } from './bench.js';
 
 beforeEach(resetFigures);
 
@@ -67,4 +69,14 @@ test('dots go where the projection puts them, and not when the globe hides them'
 
 test('a map mark without a projection says what is missing', () => {
   expect(() => compile({ width: 100, height: 100, children: [Geo({ data: islands })] })).toThrow(/projection/);
+});
+
+test('generic marks under a coord hide what the globe hides, and a route costs under the budget (SPEC 10)', () => {
+  const coord = geo(d3.geoOrthographic().rotate([-15, -45]));
+  const dots = data => compile({ width: 200, height: 200, coord, data, children: [Dot({ r: 2 })] }).scene.marks;
+  expect(dots([{ lon: 15, lat: 45 }])).toHaveLength(1);
+  expect(dots([{ lon: -165, lat: -45 }])).toHaveLength(0);
+  const route = Array.from({ length: 20 }, (_, i) => ({ lon: -170 + 17 * i, lat: 35 + 20 * Math.sin(i / 2) }));
+  const props = { width: 248, height: 110, coord: geo('equal-earth'), data: route, children: [Line()] };
+  expect(costOf(() => compile(props))).toBeLessThan(BUDGET);
 });
