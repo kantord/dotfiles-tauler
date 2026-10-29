@@ -40,7 +40,7 @@ export const valueOf = (row, channel) => SCALE_CHANNELS[channel].map(f => row[f]
 //                                          type is continuous; `opts` adds `theme` and `padding`; for a
 //                                          non-position channel `range` is the Scale's own (or the default)
 //   check(domain, values, opts)            optional: throws on a domain the type cannot take
-//   nice     true: a position scale without a `domain` is niced (never narrowed)
+//   nice     true: a position scale without a `domain` is niced (never narrowed), unless `Scale nice={false}`
 //   band     true: a y scale runs top-down; padding: the default band padding
 const TYPES = {};
 export const scaleTypes = () => Object.keys(TYPES);
@@ -97,7 +97,7 @@ export function trainDomains(layers, rows, options) {
     const other = channel === 'x' ? 'y' : 'x', layer = layers.find(l => nameOf(l, channel) === name);
     const against = trained[other]?.[layer ? nameOf(layer, other) : DEFAULT];
     const padding = opt.padding ?? def.padding ?? (against?.type === 'band' ? 0 : 0.2);
-    ((domains[channel] ??= {})[name] = { type, domain, opt, padding, nice: !opt.domain && !!def.nice && isPosition(channel) });
+    ((domains[channel] ??= {})[name] = { type, domain, opt, padding, nice: !opt.domain && opt.nice !== false && !!def.nice && isPosition(channel) });
   }
   return domains;
 }
@@ -125,7 +125,10 @@ export function rangeOf(channel, { type, opt }, area) {
 
 // `count` is the tick count a niced domain is rounded for: the axis's own, so its last tick is the domain end.
 export function buildScale({ type, domain, opt, padding, nice }, range, theme, channel, count = 10) {
+  if (typeof opt.nice === 'number') count = opt.nice;   // `Scale nice={n}`: round the domain for n ticks
   const scale = TYPES[type].build(domain, range, { ...opt, theme, padding, channel });
+  if (typeof scale !== 'function') throw new Error(`defineScale: build must return a function (scale type '${type}')`);
+  if (typeof scale.domain !== 'function') throw new Error(`defineScale: domain is required, build must return a scale with .domain() (scale type '${type}')`);
   if (nice) {
     // nice() only ever widens, except at float precision, where d3 can shrink the domain.
     const [low, high] = d3.extent(domain), niced = scale.copy().nice(count);

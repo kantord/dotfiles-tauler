@@ -13,6 +13,7 @@ export function tickValues(scale, axis, length) {
     const k = axis.ticks > 0 ? Math.ceil(scale.domain().length / axis.ticks) : 1;
     return scale.domain().filter((_, i) => i % k === 0);
   }
+  if (typeof scale.ticks !== 'function') throw new Error('defineScale: ticks is required, an Axis or Grid reads the scale\'s .ticks(count) (or its bandwidth() and domain())');
   return scale.ticks(tickCount(axis, length));
 }
 

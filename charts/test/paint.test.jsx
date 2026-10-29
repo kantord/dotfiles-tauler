@@ -57,7 +57,7 @@ test('one paint used twice is one defs entry; a different paint is another; the 
 });
 
 test('a pattern prop that is neither "hatch" nor a pattern() throws', () => {
-  expect(() => compile({ width: W, height: H, data: series, x: 't', y: 'v', children: [<Rect y1={0} y2="v" pattern="plaid" />] })).toThrow(/hatch/);
+  expect(() => compile({ width: W, height: H, data: series, x: 't', y: 'v', children: [<Rect y1={0} y2="v" width={6} pattern="plaid" />] })).toThrow(/hatch/);
   expect(pattern({ shapes: [], size: 3 }).paint).toBe('pattern');
   expect(hatch({ color: 'red' }).shapes).toHaveLength(1);
 });

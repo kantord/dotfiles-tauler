@@ -13,8 +13,10 @@ import { fitsBox } from './typeset.jsx';
 const LABEL_SIZE = 10;
 
 // The rows as a d3 hierarchy (layouts.jsx), the props read through `ctx.field`.
-const stratify = (rows, { field, props }) => stratifyRows(rows, { path: props.path != null ? r => field(r, 'path') : undefined,
-  id: r => field(r, 'id'), parent: r => field(r, 'parent'), value: props.value != null ? r => field(r, 'value') : undefined });
+const stratify = (rows, { field, props }, piece) => {
+  const given = name => props[name] != null ? r => field(r, name) : undefined;
+  return stratifyRows(rows, { path: given('path'), id: given('id'), parent: given('parent'), value: given('value'), piece });
+};
 
 // Below the trunk (where the tree first branches), each branch gets its own colour; a node is
 // coloured by its branch, unless its row has a `color` channel or the mark a `fill`.
@@ -37,7 +39,7 @@ const labelStyle = ctx => ({ fontSize: LABEL_SIZE, fontFamily: ctx.theme.font, f
 // Rects tiling the area, one per leaf. `tile`: squarify (default), binary, slice, dice, slice-dice.
 export const Treemap = defineMark('treemap', {
   render(rows, ctx) {
-    const { area, props } = ctx, root = stratify(rows, ctx), colour = branchColours(root, ctx);
+    const { area, props } = ctx, root = stratify(rows, ctx, 'Treemap'), colour = branchColours(root, ctx);
     const tile = d3['treemap' + (props.tile ?? 'squarify').replace(/(?:^|-)(\w)/g, (_, c) => c.toUpperCase())];
     d3.treemap().tile(tile).size([area.width, area.height]).paddingInner(props.padding ?? 1).round(false)(root);
     const order = new Map(rows.map((r, i) => [r, i]));   // shapes in row order, not size order
@@ -54,7 +56,7 @@ export const Treemap = defineMark('treemap', {
 // Node-link diagram, root on the left. `layout`: tree (default) or cluster (leaves aligned).
 export const Tree = defineMark('tree', {
   render(rows, ctx) {
-    const { area, props } = ctx, root = stratify(rows, ctx);
+    const { area, props } = ctx, root = stratify(rows, ctx, 'Tree');
     // Leave room on the right for the widest label.
     const room = d3.max(root.descendants(), n => ctx.measure(labelOf(n, ctx), LABEL_SIZE)) + 6;
     const layout = props.layout === 'cluster' ? d3.cluster() : d3.tree();
@@ -76,7 +78,7 @@ export const Tree = defineMark('tree', {
 // Nested circles: leaves sized by value, parents drawn as outlines.
 export const Pack = defineMark('pack', {
   render(rows, ctx) {
-    const { area, props } = ctx, root = stratify(rows, ctx), colour = branchColours(root, ctx);
+    const { area, props } = ctx, root = stratify(rows, ctx, 'Pack'), colour = branchColours(root, ctx);
     d3.pack().size([area.width, area.height]).padding(props.padding ?? 2)(root);
     return root.descendants().map(n => n.children
       ? { t: 'circle', cx: area.left + n.x, cy: area.top + n.y, r: n.r, fill: 'none', stroke: ctx.theme.line }
@@ -87,7 +89,7 @@ export const Pack = defineMark('pack', {
 // An icicle: depth from left to right, each node as tall as its share of its parent.
 export const Partition = defineMark('partition', {
   render(rows, ctx) {
-    const { area, props } = ctx, root = stratify(rows, ctx), colour = branchColours(root, ctx);
+    const { area, props } = ctx, root = stratify(rows, ctx, 'Partition'), colour = branchColours(root, ctx);
     d3.partition().size([area.height, area.width]).padding(props.padding ?? 1)(root);
     return root.descendants().flatMap(n => {
       const [x, y, width, height] = [area.left + n.y0, area.top + n.x0, n.y1 - n.y0, n.x1 - n.x0];

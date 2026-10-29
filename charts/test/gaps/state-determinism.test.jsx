@@ -89,7 +89,7 @@ test('g46 the tooltip sits on the hovered datum, the brush spans its range, the 
 
 // Scenes whose numbers sit on a rounding boundary (tidy rounds to 2 decimals) and trig-based shapes.
 const scenes = {
-  'rounding-boundary': () => ({ width: 100.5, height: 60, data: [{ k: 'a', v: 1.005 }, { k: 'b', v: 2.675 }], x: 'k', y: 'v', margin: { left: 0, right: 0, top: 0, bottom: 0 }, children: [<Rect />, <Scale channel="y" domain={[0, 3.015]} />] }),
+  'rounding-boundary': () => ({ width: 100.5, height: 60, data: [{ k: 'a', v: 1.005 }, { k: 'b', v: 2.675 }], x: 'k', y: 'v', margin: { left: 0, right: 0, top: 0, bottom: 0 }, children: [<Rect width={6} />, <Scale channel="y" domain={[0, 3.015]} />] }),
   'trig-arc': () => ({ width: 120, height: 120, data: [{ v: 3 }, { v: 5 }, { v: 2 }], children: [<Arc value="v" color="v" />] }),
   'kde-line': () => ({ width: 200, height: 100, data: kde(d3.range(30).map(i => 10 + 5 * Math.sin(i * 1.3) + (i % 4)), { value: d => d, points: 25 }), x: 'x', y: 'density', children: [<Line />] }),
 };

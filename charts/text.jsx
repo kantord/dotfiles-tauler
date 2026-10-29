@@ -13,6 +13,8 @@ export const Text = defineMark('text', {
   render(rows, ctx) {
     const { area, theme, props } = ctx;
     if (props.fit && rows.some(r => !hasBox(r))) throw new Error('Text fit: needs the box channels x1, x2, y1 and y2');
+    // Every row has a key for each declared channel: with none of the six, there is nothing to place the text by.
+    if (!ctx.coord?.centre && rows.length && !rows.some(r => ['x', 'x1', 'x2', 'y', 'y1', 'y2'].some(c => c in r))) throw new Error('Text x: no x or y channel; give x/y');
     return rows.flatMap(r => {
       const size = ctx.resolve(r, 'fontSize', FONT_SIZE), own = ctx.resolve(r, 'textAnchor');
       const lines = wrap(ctx.resolve(r, 'text', ''), ctx.resolve(r, 'width'), ctx.measure, size);
@@ -33,7 +35,7 @@ export const Text = defineMark('text', {
       } else {
         // Under polar, a Text with no x and no y sits at the centre.
         const centred = ctx.coord?.centre && r.x == null && top(r) == null;
-        const p = centred ? ctx.coord.centre : ctx.point(r.x, top(r));
+        const p = centred ? ctx.coord.centre : ctx.point(r.x ?? (ctx.coord ? r.x : -Infinity), top(r) ?? (ctx.coord ? top(r) : Infinity));
         if (!p) return [];   // the coord hides it
         // Under polar, with no `textAnchor`, the anchor comes from the angle and the label sits outside the point.
         const at = !centred && own == null ? ctx.coord?.label?.(p) : null;

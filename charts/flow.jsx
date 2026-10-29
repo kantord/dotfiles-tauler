@@ -101,7 +101,7 @@ export function flow(data, { source, target, value, width, height, nodeWidth = 8
   const upwards = y => height - y;
   return {
     nodes: all.map(n => ({ id: n.id, depth: n.column, value: n.value, x0: x0(n), x1: x0(n) + nodeWidth, y0: upwards(n.top + n.size), y1: upwards(n.top) })),
-    links: links.map(l => ({ sourceId: l.source, targetId: l.target, value: l.value, thickness: l.value * k, back: back.has(l),
+    links: links.map(l => ({ ...l.d, sourceId: l.source, targetId: l.target, value: l.value, thickness: l.value * k, back: back.has(l),
       x1: x0(nodes.get(l.source)) + nodeWidth, y1: upwards(l.sourceY), x2: x0(nodes.get(l.target)), y2: upwards(l.targetY), datum: l.d })),
   };
 }

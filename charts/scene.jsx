@@ -46,15 +46,16 @@ export function context(layer, scales, area, env) {
     x: v => x(v),
     y: v => y(v),
     // A joint mapping (the coord's, when the Plot has one): [px, py], or null where the coord
-    // hides the point.
+    // hides the point or a coordinate is not finite (a missing or NaN value is not drawn).
     point(px, py, row) {
       const p = coord ? coord.point(px, py, scales, row) : [x(px, row), y(py, row)];
-      return p && (row?.dx || row?.dy) ? [p[0] + (row.dx ?? 0), p[1] + (row.dy ?? 0)] : p;
+      const q = p && (row?.dx || row?.dy) ? [p[0] + (row.dx ?? 0), p[1] + (row.dy ?? 0)] : p;
+      return q && Number.isFinite(q[0]) && Number.isFinite(q[1]) ? q : null;
     },
     // A path `d` through [x, y] pairs (null entries break it), densified along the coord;
     // `curve` is a d3 curve, used when there is no coord.
     line: (points, { curve = d3.curveLinear } = {}) => (coord ? coord.line(points, scales, { curve })
-      : d3.line().digits(2).defined(p => p != null).x(p => x(p[0])).y(p => y(p[1])).curve(curve)(points)),
+      : d3.line().digits(2).defined(p => p != null && Number.isFinite(x(p[0])) && Number.isFinite(y(p[1]))).x(p => x(p[0])).y(p => y(p[1])).curve(curve)(points)),
     // A wedge from pixel intervals along x and y, when the coord draws them as wedges (polar).
     ...(coord?.wedge && { wedge: (xs, ys, opts) => coord.wedge(xs, ys, scales, opts) }),
     coord,

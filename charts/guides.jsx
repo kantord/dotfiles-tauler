@@ -164,6 +164,30 @@ export function claimRoom(guides, domains, width, height, env, rooms = []) {
   return { margin, data };
 }
 
+// The `margin` prop as an object: a number is every side, an object keeps its sides, unset is none.
+function explicitMargin(given) {
+  if (given == null) return {};
+  if (typeof given === 'number' && Number.isFinite(given)) return { top: given, right: given, bottom: given, left: given };
+  if (typeof given === 'object' && !Array.isArray(given)) return given;
+  throw new Error(`Plot margin: expected a number or { top, right, bottom, left }; got ${JSON.stringify(given)}`);
+}
+
+// The margin the plot gets: the guides' claims, with the `margin` prop over them (SPEC 5.7). The explicit
+// edges alone (with the 8 px minimum on the others) must leave a plot area, or it throws (a programmer's
+// mistake); the edges that came from claims (label widths: data) are scaled down to keep a quarter of each dimension.
+export function fitMargin(claimed, given, { width, height }) {
+  const explicit = explicitMargin(given);
+  const margin = { ...claimed, ...explicit }, floor = { top: 8, right: 8, bottom: 8, left: 8 };
+  for (const [name, size, edges] of [['height', height, ['top', 'bottom']], ['width', width, ['left', 'right']]]) {
+    const own = edges.filter(e => explicit[e] != null), fromClaims = edges.filter(e => explicit[e] == null);
+    const fixed = d3.sum(edges, e => explicit[e] ?? floor[e]);
+    if (size - fixed <= 0) throw new Error(`Plot ${name}: ${size} leaves no room for margins; raise ${name} or lower margin`);
+    const room = Math.max(0, size * 0.75 - d3.sum(own, e => explicit[e])), claims = d3.sum(fromClaims, e => claimed[e]);
+    if (claims > room) for (const e of fromClaims) margin[e] = claimed[e] * room / claims;
+  }
+  return margin;
+}
+
 // Lines between the bands of a band scale, or at the ticks of a scale: the ticks of the
 // channel's primary Axis (or the one for the scale it names), so lines and labels agree, unless
 // `ticks` is given.

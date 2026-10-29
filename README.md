@@ -336,6 +336,8 @@ pieces (`Layer`, `Scale`, `Axis`, `Grid`, `Legend`) as JSX children. Needs taule
 (`D3Figure`); tauler downloads d3 itself. The design and its decisions are in
 [`charts/SPEC.md`](charts/SPEC.md).
 
+A gallery of about seventy small examples, in the order that teaches the library, is built with `pnpm examples` (after `pnpm test charts/examples` has drawn them) and opened at `charts/examples/gallery.html`.
+
 ```jsx
 import { Plot, Line, Area, Link, Layer, Axis, Grid, chartTheme } from "@gh/kantord/dotfiles-tauler";
 

@@ -2,8 +2,9 @@
 // state the host owns: pass the hovered datum as the mark's `data`, and a different datum is a
 // different picture and a different key. Uses only `defineMark` and `ctx`, as any third-party
 // mark does (SPEC 5.4).
-import { defineMark, top } from '../core.jsx';
+import { defineMark } from '../core.jsx';
 
+const top = row => row.y2 ?? row.y;   // the far end of y, as the built-in marks read it
 const PAD = 4, LINE_HEIGHT = 14, OFFSET = 8, SIZE = 11;
 
 // A box beside each row's point: `lines` is an array of strings, or a function of the datum that

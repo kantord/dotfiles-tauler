@@ -176,7 +176,7 @@ test('10 data-space bins are unchanged by plot width', () => {
   const samples = d3.range(50).map(i => ({ ms: (i * 29) % 47 }));
   const bins = bin(samples, { value: 'ms', thresholds: 5 });
   const at = width => {
-    const bars = tap(<Rect x1="x0" x2="x1" y="count" />);
+    const bars = tap(<Rect x1="x0" x2="x1" y="count" baseline={0} />);
     compile({ width, height: H, data: bin(samples, { value: 'ms', thresholds: 5 }), children: [bars, <Scale channel="x" domain={[0, 50]} />] });
     return bars.seen[0];
   };

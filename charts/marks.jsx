@@ -51,6 +51,9 @@ export const Line = defineMark('line', {
   },
 });
 
+// A position the scales could place: the generators of Line and Area split where it is not.
+const placed = (...pixels) => pixels.every(Number.isFinite);
+
 const hasInterval = (rows, axis) => rows.some(r => r[axis + '1'] != null || r[axis + '2'] != null);
 
 // A ribbon per row, from (x1, y1) to (x2, y2): `thickness1` and `thickness2` (a field, function
@@ -91,9 +94,9 @@ export const Area = defineMark('area', {
       const ends = new Map(rows.map(r => [r, horizontal ? [ctx.point(r.x1, r.y, r), ctx.point(r.x2, r.y, r)] : [ctx.point(r.x, r.y1 ?? 0, r), ctx.point(r.x, top(r), r)]]));
       generator.defined(r => ends.get(r).every(Boolean)).x0(r => ends.get(r)[0][0]).y0(r => ends.get(r)[0][1]).x1(r => ends.get(r)[1][0]).y1(r => ends.get(r)[1][1]);
     } else if (horizontal) {
-      generator.defined(r => r.x1 != null && r.x2 != null).y(r => ctx.y(r.y)).x0(r => ctx.x(r.x1)).x1(r => ctx.x(r.x2));
+      generator.defined(r => r.x1 != null && r.x2 != null && placed(ctx.y(r.y), ctx.x(r.x1), ctx.x(r.x2))).y(r => ctx.y(r.y)).x0(r => ctx.x(r.x1)).x1(r => ctx.x(r.x2));
     } else {
-      generator.defined(r => top(r) != null).x(r => ctx.x(r.x))
+      generator.defined(r => top(r) != null && placed(ctx.x(r.x), ctx.y(top(r)), ctx.y(r.y1 ?? 0))).x(r => ctx.x(r.x))
         .y0(r => ctx.y(r.y1 ?? 0)).y1(r => ctx.y(top(r)));
     }
     return paths(rows, ctx, horizontal ? 'y' : 'x', generator, row => ({ ...styleOf(ctx, row, ['fill', 'fillOpacity', 'opacity', ...EFFECTS]), fillOpacity: ctx.resolve(row, 'fillOpacity', 0.85) }));
@@ -105,8 +108,9 @@ const yIsBand = (rows, options) => options.y?.type === 'band' || rows.some(r => 
 
 // Where a rectangle sits on one axis, in pixels: an interval's ends; else a point, which on a
 // band scale fills the band (less `inset`; narrowed to `u1 u2` by dodge), and on a continuous
-// scale runs from `baseline` to the value, or is `width` px centred on it.
-function extent(row, axis, ctx, baseline) {
+// scale runs from `baseline` to the value, or is `width` px centred on it (a Rect must give one
+// of these; a Bar defaults to 6 px).
+function extent(row, axis, ctx, baseline, bar) {
   const position = ctx[axis], band = ctx.bandwidth[axis](), p = ctx.props;
   const start = row[axis + '1'], end = row[axis + '2'];
   if (start != null || end != null) {
@@ -121,15 +125,27 @@ function extent(row, axis, ctx, baseline) {
     return [from + u1 * band + inset, from + u2 * band - inset];
   }
   if (baseline != null) return [position(baseline), position(v)];
-  const width = p.width ?? 6;
+  if (p.width == null && !bar) throw new Error(`Rect ${axis}: single value on a continuous scale; give ${axis}1/${axis}2, baseline, or width={px}`);
+  const width = p.width ?? 6;   // a Bar's default thickness
   return [position(v) - width / 2, position(v) + width / 2];
 }
 
+// A rectangle needs a position on both axes. Every row has a key for each channel the layer
+// declares, whatever its value, so a key that no row has means the channel is missing (a mistake,
+// unlike a column that happens to be empty). A layer with no rows has nothing to say.
+function needAxes(rows, name) {
+  for (const a of ['x', 'y']) {
+    if (!rows.length || rows.some(r => [a, a + '1', a + '2'].some(c => c in r))) continue;
+    throw new Error(`${name} ${a}: no ${a} channel, so nothing is drawn; give ${a} or ${a}1/${a}2`);
+  }
+}
+
 function rects(rows, ctx, baseline, bar = false) {
+  needAxes(rows, bar ? 'Bar' : 'Rect');
   const valueAxis = ctx.bandwidth.y() ? 'x' : 'y';
   return rows.flatMap(r => {
-    const xs = extent(r, 'x', ctx, valueAxis === 'x' ? baseline : undefined);
-    const ys = extent(r, 'y', ctx, valueAxis === 'y' ? baseline : undefined);
+    const xs = extent(r, 'x', ctx, valueAxis === 'x' ? baseline : undefined, bar);
+    const ys = extent(r, 'y', ctx, valueAxis === 'y' ? baseline : undefined, bar);
     if (!xs || !ys || ![...xs, ...ys].every(Number.isFinite)) return [];   // no value, or none the scale can place
     const [x, right] = [Math.min(...xs), Math.max(...xs)], [y, bottom] = [Math.min(...ys), Math.max(...ys)];
     if (bar && (y === bottom || x === right)) return [];   // a zero-value Bar has no length: nothing to draw
@@ -204,6 +220,7 @@ export const Link = defineMark('link', {
   render: (rows, ctx) => rows.flatMap(r => {
     if ([r.x1 ?? r.x, r.y1 ?? r.y, r.x2 ?? r.x, r.y2 ?? r.y].some(v => v == null || Number.isNaN(v))) return [];   // an end is missing
     const [a, b] = [ctx.point(r.x1 ?? r.x, r.y1 ?? r.y, r), ctx.point(r.x2 ?? r.x, r.y2 ?? r.y, r)];
+    if (!ctx.coord && !(a && b)) return [];   // an end the scales cannot place
     const style = { ...styleOf(ctx, r, LINE), strokeWidth: ctx.resolve(r, 'strokeWidth', 1) };
     if (ctx.props.curve != null && ctx.props.curve !== 'linear' && !ctx.coord) {
       const d = ctx.props.curve === 'link-horizontal' ? d3.linkHorizontal().x(p => p[0]).y(p => p[1]).digits(2)({ source: a, target: b })
@@ -224,7 +241,7 @@ export const Vector = defineMark('vector', {
   color: 'stroke',
   render: (rows, ctx) => rows.flatMap(r => {
     const p = ctx.point(r.x, top(r), r), angle = ctx.field(r, 'angle'), length = ctx.field(r, 'length') ?? 10;
-    if (!p || angle == null) return [];
+    if (!p || angle == null || !Number.isFinite(+angle) || !Number.isFinite(+length)) return [];
     const a = (angle * Math.PI) / 180;
     const style = { ...styleOf(ctx, r, LINE), strokeWidth: ctx.resolve(r, 'strokeWidth', 1) };
     return [{ t: 'line', x1: p[0], y1: p[1], x2: p[0] + length * Math.sin(a), y2: p[1] - length * Math.cos(a), ...style }];
@@ -242,7 +259,7 @@ export const Arc = defineMark('arc', {
     const arc = d3.arc().digits(2).innerRadius(props.inner != null ? props.inner * radius : f.inner ?? 0).outerRadius(radius)
       .padAngle(props.padAngle ?? 0).cornerRadius(props.cornerRadius ?? 0);
     return d3.pie().sort(null).startAngle(props.startAngle ?? f.start ?? 0).endAngle(props.endAngle ?? f.end ?? 2 * Math.PI)
-      .value(r => field(r, 'value'))(rows)
+      .value(r => field(r, 'value'))(rows.filter(r => Number.isFinite(+field(r, 'value'))))
       .map(a => ({ t: 'path', d: arc(a), transform: `translate(${cx},${cy})`,
         ...Object.fromEntries(['fill', 'stroke', 'opacity', 'strokeWidth', 'strokeDasharray', 'strokeOpacity', ...EFFECTS].map(n => [n, resolve(a.data, n)])) }));
   },

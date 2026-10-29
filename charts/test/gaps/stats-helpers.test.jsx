@@ -138,7 +138,7 @@ test('g26 waterfall steps from running totals and ends with a total bar from zer
   expect(rows).toHaveLength(steps.length + 1);
   d3.pairs(rows.slice(0, -1)).forEach(([p, q]) => near(q.from, p.to));
   expect([rows.at(-1).from, rows.at(-1).to]).toEqual([0, 32]);
-  expect(compile({ width: W, height: H, data: rows, x: (d, i) => i, children: [<Rect y1="from" y2="to" />] }).scene.marks.length).toBe(rows.length);
+  expect(compile({ width: W, height: H, data: rows, x: (d, i) => i, children: [<Rect y1="from" y2="to" width={6} />] }).scene.marks.length).toBe(rows.length);
 });
 
 test('g26 box with whiskers and outliers is one statistic plus ordinary marks (works today)', () => {

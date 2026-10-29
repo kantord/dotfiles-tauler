@@ -24,7 +24,8 @@ export function bin(data, { value, thresholds = 10 }) {
   return binner(data).map(b => ({ x0: b.x0, x1: b.x1, count: b.length }));
 }
 
-// A 2D histogram for <Rect x1 x2 y1 y2 color="count">: non-empty cells only.
+// A 2D histogram for <Rect x1 x2 y1 y2 color="count">: non-empty cells only,
+// [{ x0, x1, y0, y1, count }].
 export function bin2d(data, { x, y, thresholds = 10 }) {
   const getY = read(y);
   const edges = d3.bin().value(getY).thresholds(thresholds)(data).map(b => b.x0);

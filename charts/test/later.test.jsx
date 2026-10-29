@@ -19,7 +19,7 @@ const finite = obj => !/NaN|undefined|Infinity/.test(JSON.stringify(obj).replace
 test('Bar and Rect draw nothing for a NaN value, as for null', () => {
   const data = [{ a: 'p', b: 3 }, { a: 'q', b: NaN }, { a: 'r', b: null }];
   for (const Mark of [Bar, Rect]) {
-    const { scene } = plot([Mark({})], { data, x: 'a', y: 'b' });
+    const { scene } = plot([Mark({ width: 6 })], { data, x: 'a', y: 'b' });
     const shapes = scene.marks.filter(s => s.t === 'rect' || s.t === 'line');
     expect(shapes).toHaveLength(1);
     expect(finite(shapes)).toBe(true);

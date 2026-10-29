@@ -80,6 +80,20 @@ test('a node row has the branch below the trunk, its parent and a name', () => {
   expect(rows.find(r => r.name === 'home').branch).toBeNull();   // the trunk is above its branches
 });
 
+test('`name` picks the node label: a field or a function; the default is the last segment of the id', () => {
+  const org = [{ id: 'r', parent: null, label: 'Root' }, { id: 'a', parent: 'r', label: 'Alpha', n: 3 }, { id: 'b', parent: 'r', label: 'Beta', n: 1 }];
+  for (const layout of [treemap, partition, pack]) {
+    const byField = layout(org, { id: 'id', parent: 'parent', value: 'n', name: 'label' });
+    expect(byField.map(r => [r.id, r.name]).sort()).toEqual([['a', 'Alpha'], ['b', 'Beta'], ['r', 'Root']]);
+    expect(layout(org, { id: 'id', parent: 'parent', value: 'n', name: d => d.label.toUpperCase() }).find(r => r.id === 'a').name).toBe('ALPHA');
+    expect(layout(org, { id: 'id', parent: 'parent', value: 'n' }).find(r => r.id === 'a').name).toBe('a');
+  }
+  const { nodes } = tree(org, { id: 'id', parent: 'parent', name: 'label' });
+  expect(nodes.find(r => r.id === 'b').name).toBe('Beta');
+  const withGap = [{ path: 'x/y/z', label: 'Zed' }, { path: 'x/w', label: 'Dub' }];   // x and x/y have no row: they keep the last segment
+  expect(treemap(withGap, { path: 'path', name: 'label' }).map(r => r.name).sort()).toEqual(['Dub', 'Zed', 'x', 'y']);
+});
+
 test('the four layouts cost less than the budget at 60 nodes', () => {
   const big = d3.range(60).map(i => ({ path: `g${i % 6}/h${i % 4}/n${i}`, v: 1 + (i % 7) }));
   for (const layout of [treemap, pack, partition, tree]) expect(costOf(() => layout(big, { path: 'path', value: 'v' }))).toBeLessThan(BUDGET);

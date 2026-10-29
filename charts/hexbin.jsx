@@ -6,6 +6,12 @@ import { read, num } from './fields.jsx';
 
 const SIN60 = Math.sin(Math.PI / 3);
 
+// On a small plot the cells are squashed unless the Polygon plot's scales are told the data extent: an
+// inferred domain is niced past the data and read from the polygon corners, and the default margins
+// shrink the area. Pass explicit data-extent domains with a zero margin (the hexbin example does), or
+// at least `margin` zero with `nice={false}` on both Scales. Height over width of a cell, measured at
+// 248 x 110 (regular is 1.155): default scales and margins 0.49, margin 0 0.71, margin 0 and
+// `nice={false}` 1.07, explicit domains and margin 0 1.155 (SPEC 6; charts/test/usability.test.jsx).
 // Cells of `binWidth` (data units along x, flat side to flat side) holding at least one row:
 // [{ cx, cy, count, points }], `points` the six corners in data space. Rows with no finite x or y
 // are dropped. Hexagons are regular in data space; with the plot's pixel `width` and `height`

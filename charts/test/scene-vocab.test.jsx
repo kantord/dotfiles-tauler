@@ -24,6 +24,13 @@ test('capability filter: blur is a defs entry the shape points at', () => {
   expect(tags(svg, 'circle').some(c => c.filter === `url(#${f.id})`)).toBe(true);
 });
 
+test('capability filter: blur and drop shadow have a region wider than the shape box', () => {
+  for (const effect of [blur({ std: 3 }), dropShadow()]) {
+    const [f] = tags(svgOf(<Dot filter={effect} />), 'filter');
+    expect(f).toMatchObject({ x: '-20%', y: '-20%', width: '140%', height: '140%' });
+  }
+});
+
 test('capability filter: drop shadow carries offset, blur and colour', () => {
   const svg = svgOf(<Rect y1={2} y2={6} x="t" width={10} filter={dropShadow({ dx: 2, dy: 3, std: 1.5, color: '#112233', opacity: 0.5 })} />);
   const [f] = tags(svg, 'filter');

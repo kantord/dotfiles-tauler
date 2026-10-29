@@ -6,7 +6,7 @@ import { Rect, Link, Line } from '../marks.jsx';
 
 test('a zero-height Rect with only a fill still shows: its line is stroked with the fill', () => {
   const { scene } = compile({ width: 200, height: 100, data: [{ t: 1, open: 5, close: 5 }, { t: 2, open: 4, close: 6 }],
-    children: [Rect({ x: 't', y1: 'open', y2: 'close', fill: 'red' })] });
+    children: [Rect({ x: 't', y1: 'open', y2: 'close', width: 6, fill: 'red' })] });
   const [doji] = scene.marks.filter(s => s.t === 'line');
   expect(doji).toMatchObject({ stroke: 'red', strokeWidth: 1 });
 });

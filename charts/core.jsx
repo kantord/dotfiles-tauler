@@ -8,7 +8,7 @@
 // take the time from a stream and pass it in. SPEC.md is the design.
 import * as d3 from 'd3';
 import { AXES, SCALE_CHANNELS, DEFAULT, isNumber, isDate, optionsFor, trainDomains, buildScale, rangeOf, scaleTypes } from './scales.jsx';
-import { GUIDES, defineGuide, guideOf, checkChannel, claimRoom, gridShapes, niceCount, finalTicks } from './guides.jsx';
+import { GUIDES, defineGuide, guideOf, checkChannel, claimRoom, gridShapes, niceCount, finalTicks, fitMargin } from './guides.jsx';
 import { stack, dodge, jitter, jitterPx, isPixelStage } from './positions.jsx';
 import { CLIP_BLEED, context, bindScales, tidy, hash53 } from './scene.jsx';
 import { geo, coordOf } from './coord.jsx';
@@ -107,6 +107,14 @@ function scaleDeclared(spec, props) {
   else byName[props.name] = props;
 }
 
+// The style prop the colour channel feeds: `colorTo` ('fill' or 'stroke'), else the mark's own.
+function colorTarget(node, props) {
+  if (props.colorTo !== undefined && !['fill', 'stroke'].includes(props.colorTo)) {
+    throw new Error(`${node.mark[0].toUpperCase()}${node.mark.slice(1)} colorTo: "${props.colorTo}" is not a style prop; use "fill" or "stroke"`);
+  }
+  return props.colorTo ?? node.color;
+}
+
 // Wrapper components have already run, so whatever they returned is just more descriptors.
 function collect(node, inherited, spec) {
   if (Array.isArray(node)) { for (const n of node) collect(n, inherited, spec); return spec; }
@@ -116,7 +124,7 @@ function collect(node, inherited, spec) {
     case 'mark': {
       const { children, data, ...rest } = props;
       if (rest.size !== undefined && !node.size) throw new Error(`${node.mark}: has no size to set; 'size' is not a channel of this mark`);
-      spec.layers.push({ mark: node.mark, render: node.render, domain: node.domain, room: node.room, color: node.color, size: node.size, props: rest,
+      spec.layers.push({ mark: node.mark, render: node.render, domain: node.domain, room: node.room, color: colorTarget(node, rest), size: node.size, props: rest,
         position: rest.position ?? inherited.position, scale: bindings(inherited.scale, rest), ownData: data ?? inherited.layerData,
         data: data ?? inherited.data, channels: inherit(inherited.channels, pickChannels(rest)) });
       break;
@@ -218,7 +226,7 @@ const stages = [
   },
   function areaStage(s) {
     const { width, height } = s.props;
-    const margin = { ...s.claims.margin, ...s.props.margin };
+    const margin = fitMargin(s.claims.margin, s.props.margin, s.props);
     const area = { left: margin.left, top: margin.top, right: width - margin.right, bottom: height - margin.bottom };
     area.width = area.right - area.left; area.height = area.bottom - area.top;
     const bound = s.env.coord?.bind(area);

@@ -2,8 +2,9 @@
 // Like a paint, each is a plain object in the scene (so it is part of the key; `def` names the
 // SVG element it becomes) and `drawScene` writes each distinct one once into <defs>.
 
-// A Gaussian blur of standard deviation `std` px. (A filter's region is the shape's box, so a
-// flat line, which has no height, cannot be filtered; put it in a Group.)
+// A Gaussian blur of standard deviation `std` px. The filter region is the shape's box grown by 20% on
+// each side (so a glow is not clipped to the box); a flat line, which has no height, still cannot be
+// filtered: put it in a Group.
 export const blur = ({ std = 2 } = {}) => ({ def: 'filter', effect: 'blur', std });
 
 // A shadow offset by (dx, dy) px, blurred by `std`.
@@ -32,7 +33,7 @@ export const isDef = v => v != null && typeof v === 'object' && typeof v.def ===
 // the shapes inside a marker, mask or clip path.
 export function drawDef(defs, effect, id, drawShape) {
   if (effect.def === 'filter') {
-    const el = defs.append('filter').attr('id', id);
+    const el = defs.append('filter').attr('id', id).attr('x', '-20%').attr('y', '-20%').attr('width', '140%').attr('height', '140%');
     if (effect.effect === 'blur') el.append('feGaussianBlur').attr('stdDeviation', effect.std);
     else el.append('feDropShadow').attr('dx', effect.dx).attr('dy', effect.dy).attr('stdDeviation', effect.std)
       .attr('flood-color', effect.color).attr('flood-opacity', effect.opacity);
