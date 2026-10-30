@@ -1,11 +1,11 @@
 // Map marks: GeoJSON drawn through the Plot's projection (`<Plot projection="equal-earth">`),
-// which core fits to the plot area around `fit` (the whole globe by default). Plain `defineMark`s.
+// which core fits to the plot area around `fit` (the whole globe by default). Plain `builtinMark`s.
 //
 // Maps make long paths, and the figure's key is a hash of the drawing, so a map with detailed
 // shapes is cheaper with a `key` on its Plot (see the README): then it is compiled only when
 // tauler draws it, not every Tick.
 import * as d3 from 'd3';
-import { defineMark } from './core.jsx';
+import { builtinMark } from './core.jsx';
 
 const projectionOf = ctx => {
   if (!ctx.projection) throw new Error('Geo and GeoDot need a projection: <Plot projection="equal-earth">');
@@ -28,7 +28,7 @@ function rewind(geometry) {
 
 // One path per row; each row is GeoJSON (a Feature, a geometry, `{ type: 'Sphere' }`, a
 // graticule). A `color` channel colours the fill: a choropleth.
-export const Geo = defineMark('geo', {
+export const Geo = builtinMark('geo', {
   render(rows, ctx) {
     const path = d3.geoPath(projectionOf(ctx)).digits(2);
     return rows.flatMap(r => {
@@ -41,7 +41,7 @@ export const Geo = defineMark('geo', {
 
 // A dot per row at `lon`, `lat` (fields of those names unless set). A dot the projection hides
 // (the far side of a globe) is not drawn.
-export const GeoDot = defineMark('geo-dot', {
+export const GeoDot = builtinMark('geo-dot', {
   render(rows, ctx) {
     const path = d3.geoPath(projectionOf(ctx)).digits(2);
     const read = (r, prop) => (ctx.props[prop] == null ? r.d?.[prop] : ctx.field(r, prop));

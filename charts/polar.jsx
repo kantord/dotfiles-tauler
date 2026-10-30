@@ -6,6 +6,7 @@ import * as d3 from 'd3';
 import { DEFAULT } from './scales.jsx';
 import { tickValues } from './ticks.jsx';
 import { line } from './scene.jsx';
+import { describe } from './speckey.jsx';
 
 const TAU = 2 * Math.PI;
 const STEP = TAU / 90;       // the widest angle a densified segment spans
@@ -18,7 +19,8 @@ export function polar({ inner = 0, startAngle = 0, endAngle = TAU } = {}) {
   if (!Number.isFinite(startAngle) || !Number.isFinite(endAngle) || startAngle === endAngle) {
     throw new Error('polar: startAngle and endAngle must be different numbers (radians, clockwise from up)');
   }
-  return { positions: true, sweep: { start: startAngle, end: endAngle }, bind: area => bind(area, inner, startAngle, endAngle) };
+  return describe({ positions: true, sweep: { start: startAngle, end: endAngle }, bind: area => bind(area, inner, startAngle, endAngle) },
+    { coord: 'polar', inner, startAngle, endAngle });
 }
 
 function bind(area, inner, start, end) {

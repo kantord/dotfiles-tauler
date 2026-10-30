@@ -35,12 +35,31 @@ function h(type, props, ...children) {
   return flattenNode({ type, props: rest, children: kids });
 }
 
+// A string key is the Picture's name; any other JSON value is stringified (tauler hashes it). Values
+// JSON would silently change, or drop, throw: they would make two different keys one.
+function nameOf(key) {
+  if (typeof key === 'string') return key;
+  const bad = (v, seen = new Set()) => {
+    if (v === undefined || typeof v === 'function' || typeof v === 'symbol' || typeof v === 'bigint' || v instanceof Date) return true;
+    if (typeof v === 'number') return !Number.isFinite(v);
+    if (v === null || typeof v !== 'object') return false;
+    if (seen.has(v)) return true;
+    seen.add(v);
+    const r = Object.values(v).some(x => bad(x, seen));
+    seen.delete(v);
+    return r;
+  };
+  if (bad(key)) throw new Error('<D3Figure> key: a function, undefined, NaN, Infinity, Date, BigInt or cycle cannot be a key');
+  return 'json:' + JSON.stringify(key);
+}
+
 function D3Figure({ key, width, height, draw }) {
   if (key === undefined || key === null || key === '') throw new Error('<D3Figure> needs a key');
   const isSize = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
   if (!isSize(width) || !isSize(height)) throw new Error('<D3Figure> needs a numeric width and height');
-  figures.set(String(key), { width, height, draw });
-  return { type: 'img', src: 'tauler:picture/' + key, style: { width, height } };
+  const name = nameOf(key);
+  figures.set(name, { width, height, draw });
+  return { type: 'img', src: 'tauler:picture/' + name, style: { width, height } };
 }
 
 Object.assign(globalThis, { h, Fragment: { [FRAGMENT]: true }, D3Figure });
@@ -59,6 +78,6 @@ export function drawFigure(key) {
     .attr('width', figure.width).attr('height', figure.height)
     .attr('viewBox', `0 0 ${figure.width} ${figure.height}`)
     .attr('font-family', 'sans-serif');
-  figure.draw(svg, d3);
+  figure.draw(svg, d3, { name: key });
   return svg.node().outerHTML;
 }

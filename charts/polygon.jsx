@@ -1,7 +1,7 @@
 // The Polygon mark: rings in data space (SPEC 5.2). Hexagons, Delaunay triangles and contours
 // are statistics that return rows for it.
 import * as d3 from 'd3';
-import { defineMark } from './core.jsx';
+import { builtinMark } from './core.jsx';
 import { RECT, styleOf } from './effects.jsx';
 
 const get = (row, v) => typeof v === 'function' ? v(row.d) : typeof v === 'string' ? row.d?.[v] : undefined;
@@ -15,7 +15,7 @@ const ringsOf = (row, props) => {
 // data space; `holes` (default the field `holes`) are rings cut out of it. The rings train the x
 // and y scales, so a plot of polygons alone needs no x or y channel. A ring with a point the coord
 // hides is not drawn. `colorTo="stroke"` draws outlines coloured by the colour channel (fill none).
-export const Polygon = defineMark('polygon', {
+export const Polygon = builtinMark('polygon', {
   domain(rows, props) {
     const points = rows.flatMap(r => ringsOf(r, props)[0] ?? []).filter(p => p.every(Number.isFinite));
     return { x: points.map(p => p[0]), y: points.map(p => p[1]) };

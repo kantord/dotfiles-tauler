@@ -158,7 +158,7 @@ accessor plays. Avoid "encoding", "aesthetic", and names clashing with tauler (`
 
     descriptors -> collect -> evaluate (rows) -> trainDomains -> margins -> scales
       -> MARKS[name](layer) -> scene {width,height,clip,back,marks,front}
-      -> key = hash(JSON(scene)) (on the loop) ; drawScene(svg, scene, clipId) in draw
+      -> key = spec string of the props, or hash(JSON(scene)) when they hold a closure ; drawScene(svg, scene, clipId) in draw
 
 Has: `Line Area Bar Dot Rule Text`; `Layer Scale Axis Grid`; channels `x y y1 y2 color label`;
 linear/time/band/ordinal; a `stack` boolean; `chartTheme`.
@@ -701,18 +701,26 @@ Both are marks on `defineMark`; core adds only the projection.
 
 ### 5.11 Key, determinism, cost
 
-Decided by the measurement gate (step 0, section 10): **A, with `key` as the escape hatch.**
+The figure key is found in this order (`Plot.jsx`, `speckey.jsx`):
 
-- **No `key` (default, A).** `compile` runs in the render runtime every Tick; the figure key is
-  `hash53(JSON(scene))` (cyrb53), the scene rounded to 2 decimals (pictures differing by less
-  are intentionally one Picture). `draw` calls `drawScene`.
 - **`key` given.** The caller owns identity: `Plot` does no work in the render runtime and
   forwards `key` to `<D3Figure key>`; `draw` compiles inside the Draw runtime. The key must
-  change whenever the picture should (include a data version or the last timestamp). Use it
-  for windows of thousands of rows, or when a function prop captures values.
+  change whenever the picture should (include a data version or the last timestamp).
+- **No `key`, props that can be keyed (default).** The key is a canonical string of the props
+  (`specKey`), passed as `key={[spec]}`: tauler stringifies and hashes it natively. Nothing is
+  compiled in the render runtime; `draw` compiles in the Draw runtime for a new key only. The
+  library's own marks, `stack`/`dodge`/`jitter`/`jitterPx` and `polar()` are keyed by name and
+  options, by identity (a user's `defineMark('line', ...)` is not ours); Dates and ±Infinity
+  are tagged. A mark's `render` may read only rows, ctx and props: that is all the key covers.
+- **No `key`, props that cannot be keyed** (a closure, a custom mark, a projection such as
+  `geo(...)`). `compile` runs in the render runtime every Tick and the figure key is
+  `hash53(JSON(scene))` (cyrb53), the scene rounded to 2 decimals (pictures differing by less
+  are intentionally one Picture). Measured in tauler's QuickJS: about 4 ms per Tick at 50 rows,
+  20 ms at 500, so above about 100 rows pass a `key` (section 10).
 
 Determinism either way: the scene is a pure function of props; statistics are deterministic.
-The Draw runtime re-evaluates the layout; a key it does not reproduce is not drawn.
+Tauler's Draw runtime evaluates the layout with the inputs of the Tick that asked for the figure
+(tauler #713), so a key built from props is found again there.
 
 The risk is a different float engine (QuickJS), not a second module graph: trig (polar,
 hexagons, geo), `Math.exp` (kde) and d3 curves may differ in the last bit, and `tidy` rounds to
@@ -1027,13 +1035,7 @@ forwarding test and the `$` guard test are acceptance items.
   (Grid + Area + Line + two Axes, time x) and any new stage alternately in one loop (median of
   15) and `costOf(stage)` returns the stage as a fraction of the reference; a stage over 25%
   (`BUDGET`) ships a cheaper form or a `key`-path plan. Node medians of the reference plot:
-  1.1 ms at 50 rows, 4.1 ms at 500, 21 ms at 5000. Against the tauler render-runtime figures
-  above (1.6, 7.8, 72 ms) the factor is **1.5x, 1.9x, 3.4x**, not the 12x quoted for d3 in
-  QuickJS: the tauler figures include JSX evaluation and the scene hash on top of `compile`,
-  and this factor was derived from the table above, not re-measured in tauler (never run the
-  bare `tauler` binary). So a Node budget of `B` ms stands for about `2B` ms at 500 rows in
-  tauler; with about 2 ms of headroom there, a new stage should cost under about 1 ms of Node
-  time at 500 rows. `isolate: true` passes every test (172 passed), but the whole run takes
+  1.1 ms at 50 rows, 4.1 ms at 500, 21 ms at 5000. Measured inside tauler's real render runtime (a probe against the `tauler` library crate, not the binary; `charts/TAULER-SUPPORT.md`, T3), the same plot without a `key` costs 3.4 to 3.9 ms at 50 rows, about 20 ms at 500 and 158 to 205 ms at 5000 per Tick, and 0.02 ms with a `key`: QuickJS is roughly 6 to 12 times slower than Node here, not the 1.9 times derived earlier from the d3 benchmark table (that derivation was wrong). So the 10 ms of a Hop holds without a `key` only up to about 100 rows; above that give the `Plot` a `key` (5.11). A Node budget of `B` ms stands for about `6B` to `12B` ms in tauler. `isolate: true` passes every test (172 passed), but the whole run takes
   3.1 to 4.9 s against 3.0 s with `isolate: false`, so the "under 3 s" target is not met on
   this machine and `isolate: false` stays; the no-module-level-state rule (5.11) holds.
 - Stress-test pass (7.2): fixed NaN stacking, array channels, multi-stop colour

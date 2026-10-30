@@ -90,3 +90,15 @@ test('every fragment in __html__ belongs to an example', () => {
   const stray = readdirSync(new URL('./__html__/', import.meta.url)).filter(f => !known.has(f.replace(/\.(light|dark)\.html$/, '')));
   expect(stray).toEqual([]);
 });
+
+// The harness's themeColor must give what tauler's real one gives (tauler-core/src/theme/resolver.rs: verified outputs
+// from compiling that function): `#rrggbbaa`, alpha clamped to 0..1, a CSS name converted, an unknown token unchanged.
+test('themeColor mirrors tauler: #rrggbbaa, alpha clamped, CSS names converted, unknown tokens unchanged', () => {
+  const themeColor = themeColorFor({ primary: '#7aa2f7', foreground: '#c9d1d9' });
+  expect(themeColor('primary', 0.5)).toBe('#7aa2f780');
+  expect(themeColor('primary', 1.7)).toBe('#7aa2f7ff');
+  expect(themeColor('primary', -1)).toBe('#7aa2f700');
+  expect(themeColor('primary')).toBe('#7aa2f7');
+  expect(themeColor('red', 0.5)).toBe('#ff000080');
+  expect(themeColor('not-a-colour', 0.5)).toBe('not-a-colour');
+});

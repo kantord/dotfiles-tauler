@@ -3,6 +3,7 @@
 import * as d3 from 'd3';
 import { keyOf } from './scales.jsx';
 import { hash53 } from './scene.jsx';
+import { describe } from './speckey.jsx';
 
 const seriesOf = by => typeof by === 'function' ? by : by ? r => r[by] : r => r.group ?? r.color;
 const firstSeen = (rows, get) => [...new Set(rows.map(r => keyOf(get(r))))];
@@ -36,7 +37,7 @@ export function bandAxis(rows, scales) {
 // `anchor` names a series placed across zero, the ones before it going left (down), the ones
 // after it right (up). For an Area, a series missing at some `groupBy` value gets a 0 there,
 // so the band above does not jump.
-export const stack = ({ by, along = 'y', groupBy: declared, offset = 'zero', order, anchor } = {}) => (rows, { mark }) => {
+const _stack = ({ by, along = 'y', groupBy: declared, offset = 'zero', order, anchor } = {}) => (rows, { mark }) => {
   // By default rows pile by their position across: `x`, or `x1` for interval bars (a histogram).
   const across = along === 'y' ? 'x' : 'y';
   const groupBy = declared ?? (rows.some(r => r[across] != null) ? across : across + '1');
@@ -94,7 +95,7 @@ export const stack = ({ by, along = 'y', groupBy: declared, offset = 'zero', ord
 // Gives each series a slot of its band: `u1 u2`, fractions of the band that Rect applies on its
 // band axis. A band shares itself among the series present in it, in one global order
 // (first-seen, or `order`). Never trained, so it needs no scale.
-export const dodge = ({ by, padding = 0.1, order } = {}) => (rows, info) => {
+const _dodge = ({ by, padding = 0.1, order } = {}) => (rows, info) => {
   if (order != null && !Array.isArray(order)) throw new Error('dodge: order must be an array of series');
   const series = seriesOf(by), sequence = orderOf(order, firstSeen(rows, series)), axis = bandAxis(rows, info?.scales);
   for (const band of d3.group(rows, r => keyOf(r[axis])).values()) {
@@ -114,7 +115,7 @@ export const dodge = ({ by, padding = 0.1, order } = {}) => (rows, info) => {
 // no row moves when another is removed. Rows with no key stay put and overlap. Point marks
 // (`Dot`, `Link`) read it. Positions run before domains are inferred, so the band axis must be
 // declared (`<Scale channel="x" type="band"/>`); a continuous axis needs jitterPx (GAPS 3.4b).
-export const jitter = ({ width = 0.8 } = {}) => (rows, info) => {
+const _jitter = ({ width = 0.8 } = {}) => (rows, info) => {
   if (!['x', 'y'].some(a => info?.scales?.[a]?.type === 'band')) {
     throw new Error('jitter: declare a band Scale on x or y (<Scale channel="x" type="band"/>); a continuous axis needs jitterPx');
   }
@@ -134,7 +135,7 @@ export const isPixelStage = position => position?.stage === 'pixel';
 // `along: 'y'`) of up to ±`width`/2, a hash of the key, read by `ctx.point` (so `Dot` and `Link`).
 // Same key, same offset, whatever else is in the data; rows with no key are not moved. On a band
 // axis use `jitter`, which stays inside the band.
-export const jitterPx = ({ width = 12, along = 'x' } = {}) => {
+const _jitterPx = ({ width = 12, along = 'x' } = {}) => {
   if (along !== 'x' && along !== 'y') throw new Error("jitterPx: along must be 'x' or 'y'");
   const position = rows => {
     for (const r of rows) {
@@ -145,3 +146,7 @@ export const jitterPx = ({ width = 12, along = 'x' } = {}) => {
   position.stage = 'pixel';
   return position;
 };
+
+// Named in a Plot's key (speckey.jsx) by their options, so a Plot using them need not be compiled to be keyed.
+const named = (name, make) => (opts = {}) => describe(make(opts), { stage: name, ...opts });
+export const stack = named('stack', _stack), dodge = named('dodge', _dodge), jitter = named('jitter', _jitter), jitterPx = named('jitterPx', _jitterPx);

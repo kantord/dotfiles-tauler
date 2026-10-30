@@ -1,6 +1,6 @@
 // The Text mark: one label per row, drawn unclipped and on top (SPEC 5.2, 5.4).
 import * as d3 from 'd3';
-import { defineMark, top, text, FONT_SIZE } from './core.jsx';
+import { builtinMark, top, text, FONT_SIZE } from './core.jsx';
 import { wrap, blockHeight, fitsBox, rotation, LINE_HEIGHT, PAD } from './typeset.jsx';
 
 const hasBox = r => r.x1 != null && r.x2 != null && r.y1 != null && r.y2 != null;
@@ -9,7 +9,7 @@ const hasBox = r => r.x1 != null && r.x2 != null && r.y1 != null && r.y2 != null
 // the top-left (`textAnchor="start"`) or top-right (`"end"`) corner. `width` wraps lines to that
 // many px (and "\n" breaks), `angle` turns the label clockwise about its anchor, `fit` draws it
 // only where its lines fit the box.
-export const Text = defineMark('text', {
+export const Text = builtinMark('text', {
   render(rows, ctx) {
     const { area, theme, props } = ctx;
     if (props.fit && rows.some(r => !hasBox(r))) throw new Error('Text fit: needs the box channels x1, x2, y1 and y2');

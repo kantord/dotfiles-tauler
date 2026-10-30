@@ -1,6 +1,6 @@
 // The Swarm mark: a beeswarm (SPEC 5.2, 5.3). It needs pixel positions (a dot's radius against its
 // place), so it is a mark, not a data-space position; it does not use the pixel stage.
-import { defineMark, top } from './core.jsx';
+import { builtinMark, top } from './core.jsx';
 import { keyOf } from './scales.jsx';
 import { EFFECTS, styleOf } from './effects.jsx';
 
@@ -28,7 +28,7 @@ function offsets(places, radii) {
 // no two circles overlap: the larger the radius, the wider the swarm. Dots in a dodge slot swarm
 // about the slot's middle. A swarm is not limited to its band: too many or too large dots spill
 // into the next band, so lower `r` or widen the plot. `r` is the radius in px (or the size channel).
-export const Swarm = defineMark('swarm', {
+export const Swarm = builtinMark('swarm', {
   size: 'r',
   render(rows, ctx) {
     const horizontal = !ctx.bandwidth.x() && ctx.bandwidth.y() > 0;

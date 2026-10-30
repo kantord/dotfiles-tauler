@@ -2,7 +2,7 @@
 import { test, expect, beforeEach } from 'vitest';
 import { drawFigure, figureKeys, resetFigures } from '../../test/tauler.js';
 import { Plot } from '../Plot.jsx';
-import { Axis } from '../core.jsx';
+import { Axis, defineMark, stack } from '../core.jsx';
 import { Line, Bar } from '../marks.jsx';
 import { series } from './fixtures.js';
 
@@ -43,4 +43,43 @@ test('a wrapper component returning marks composes', () => {
   const Bars = props => <Bar y="mem" {...props} />;
   <Plot width={100} height={50} data={series.slice(0, 3)} x="t"><Bars /></Plot>;
   expect(drawFigure(figureKeys()[0]).match(/<rect [^>]*fill=/g)).toHaveLength(3);   // not the clip's rect
+});
+
+test('a Plot of library marks is keyed by its spec, compiled only in Draw, and draws what the scene-hash path draws', () => {
+  chart();
+  const [name] = figureKeys();
+  expect(name).toMatch(/^json:\["plot-1/);
+  const bySpec = drawFigure(name);
+  resetFigures();
+  chart({ onlyForFallback: undefined, x: d => d.t });   // a closure: keyed by the scene hash
+  expect(figureKeys()[0]).not.toMatch(/^json:/);
+  expect(drawFigure(figureKeys()[0])).toBe(bySpec);
+});
+
+test('same spec, same key; different data or options, a different key', () => {
+  chart(); chart();
+  expect(figureKeys()).toHaveLength(1);
+  chart({ data: series.slice(1) });
+  chart({ width: 100 });
+  expect(figureKeys()).toHaveLength(3);
+});
+
+test('a custom mark with a library mark\'s name is not keyed as the library mark', () => {
+  const Custom = defineMark('line', { render: () => [] });
+  <Plot width={50} height={50} data={series} x="t" y="cpu"><Custom /></Plot>;
+  expect(figureKeys()[0]).not.toMatch(/^json:/);
+});
+
+test('stack, dodge, jitter and polar are keyed by their options; a function option is not', () => {
+  const keyed = pos => { resetFigures(); <Plot width={80} height={80} data={series} x="t" y="cpu"><Bar position={pos} /></Plot>; return figureKeys()[0]; };
+  expect(keyed(stack({ by: 'g' }))).toMatch(/^json:/);
+  expect(keyed(stack({ by: 'g' }))).toBe(keyed(stack({ by: 'g' })));
+  expect(keyed(stack({ by: 'g' }))).not.toBe(keyed(stack({ by: 'h' })));
+  expect(keyed(stack({ by: r => r.cpu }))).not.toMatch(/^json:/);
+});
+
+test('Dates and infinities in the props are distinguished, not collapsed', () => {
+  const keyOf = data => { resetFigures(); <Plot width={50} height={50} data={data} x="t" y="v"><Line /></Plot>; return figureKeys()[0]; };
+  expect(keyOf([{ t: new Date(0), v: 1 }])).not.toBe(keyOf([{ t: new Date(1000), v: 1 }]));
+  expect(keyOf([{ t: 0, v: Infinity }])).not.toBe(keyOf([{ t: 0, v: null }]));
 });

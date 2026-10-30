@@ -14,6 +14,7 @@ import { CLIP_BLEED, context, bindScales, tidy, hash53 } from './scene.jsx';
 import { geo, coordOf } from './coord.jsx';
 import { polar } from './polar.jsx';
 import { measureFor } from './fonts.jsx';
+import { describe } from './speckey.jsx';
 
 // The public surface stays here: callers import from core.jsx only.
 export { colorScale, sizeScale, shapeScale, opacityScale, defineScale, defineChannel } from './scales.jsx';
@@ -45,6 +46,11 @@ export const defaultMeasure = (text, size) => String(text).length * size * 0.6;
 // returns the margin the mark needs, `{ top?, right?, bottom?, left? }` in pixels (SPEC 5.7).
 export const defineMark = (name, { render, domain, room, color = 'fill', size }) =>
   (props = {}) => ({ $: 'mark', mark: name, render, domain, room, color, size, props });
+// The library's own marks: the same, but a Plot can key them by name and props (speckey.jsx).
+export const builtinMark = (name, def) => {
+  const make = defineMark(name, def);
+  return (props = {}) => describe(make(props), { mark: name, props });
+};
 const piece = kind => (props = {}) => ({ $: kind, props });
 
 export const Layer = piece('layer');   // shares data and channels with the marks inside it

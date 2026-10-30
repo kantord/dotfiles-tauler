@@ -1,4 +1,4 @@
-// Tree marks: a hierarchy laid out by d3 in the plot area. Plain `defineMark`s; core knows
+// Tree marks: a hierarchy laid out by d3 in the plot area. Plain `builtinMark`s; core knows
 // nothing about trees.
 //
 // The hierarchy comes from flat rows, so data stays plain JSON: either `path`, a field holding
@@ -6,7 +6,7 @@
 // `value` sizes the leaves (Treemap, Pack, Partition); `label` names a node (a field or a
 // function of the datum; a node with no row of its own shows the last segment of its path).
 import * as d3 from 'd3';
-import { defineMark, text } from './core.jsx';
+import { builtinMark, text } from './core.jsx';
 import { stratifyRows, lastSegment } from './layouts.jsx';
 import { fitsBox } from './typeset.jsx';
 
@@ -37,7 +37,7 @@ const fits = (label, width, height, ctx) => fitsBox([label], width, height, ctx.
 const labelStyle = ctx => ({ fontSize: LABEL_SIZE, fontFamily: ctx.theme.font, fill: ctx.theme.ink, textAnchor: 'start', front: true });
 
 // Rects tiling the area, one per leaf. `tile`: squarify (default), binary, slice, dice, slice-dice.
-export const Treemap = defineMark('treemap', {
+export const Treemap = builtinMark('treemap', {
   render(rows, ctx) {
     const { area, props } = ctx, root = stratify(rows, ctx, 'Treemap'), colour = branchColours(root, ctx);
     const tile = d3['treemap' + (props.tile ?? 'squarify').replace(/(?:^|-)(\w)/g, (_, c) => c.toUpperCase())];
@@ -54,7 +54,7 @@ export const Treemap = defineMark('treemap', {
 });
 
 // Node-link diagram, root on the left. `layout`: tree (default) or cluster (leaves aligned).
-export const Tree = defineMark('tree', {
+export const Tree = builtinMark('tree', {
   render(rows, ctx) {
     const { area, props } = ctx, root = stratify(rows, ctx, 'Tree');
     // Leave room on the right for the widest label.
@@ -76,7 +76,7 @@ export const Tree = defineMark('tree', {
 });
 
 // Nested circles: leaves sized by value, parents drawn as outlines.
-export const Pack = defineMark('pack', {
+export const Pack = builtinMark('pack', {
   render(rows, ctx) {
     const { area, props } = ctx, root = stratify(rows, ctx, 'Pack'), colour = branchColours(root, ctx);
     d3.pack().size([area.width, area.height]).padding(props.padding ?? 2)(root);
@@ -87,7 +87,7 @@ export const Pack = defineMark('pack', {
 });
 
 // An icicle: depth from left to right, each node as tall as its share of its parent.
-export const Partition = defineMark('partition', {
+export const Partition = builtinMark('partition', {
   render(rows, ctx) {
     const { area, props } = ctx, root = stratify(rows, ctx, 'Partition'), colour = branchColours(root, ctx);
     d3.partition().size([area.height, area.width]).padding(props.padding ?? 1)(root);

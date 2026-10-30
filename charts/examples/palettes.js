@@ -17,11 +17,18 @@ export const PALETTES = {
     ['#4b5263', '#ff8fa3', '#b4e07f', '#f0c27c', '#93b4ff', '#cdb2ff', '#9be0ff', '#d5d9ee']),
 };
 
-// tauler's `themeColor(name, alpha)`: the token's colour, with an alpha when given; an unknown name comes back unchanged.
-export const themeColorFor = colors => (name, alpha) => {
-  const c = colors[name];
-  if (!c) return name;
-  if (alpha == null) return c;
-  const { r, g, b } = d3.rgb(c);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+// tauler's `themeColor(token, alpha)` (tauler-core/src/theme/resolver.rs, `theme_color` and `color_with_alpha`):
+// the colour the token names in `colors`, or the token itself when it names none; with an alpha it is
+// `#rrggbbaa`, the alpha clamped to 0..1. A `#rrggbb` keeps its digits; any other form (`#rgb`, `#rrggbbaa`,
+// `rgb()`, a CSS name) is parsed and its own alpha multiplied by the given one; a value that is no colour
+// comes back unchanged. Not mirrored: `oklch()` (d3 cannot parse it; the palettes here are hex).
+const byte = n => Math.round(n).toString(16).padStart(2, '0');
+export const themeColorFor = colors => (token, alpha) => {
+  const value = colors[token] ?? token;
+  if (alpha == null) return value;
+  const a = Math.min(1, Math.max(0, alpha));
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value + byte(a * 255);
+  const c = d3.color(value);
+  if (!c) return value;
+  return '#' + byte(c.r) + byte(c.g) + byte(c.b) + byte(c.opacity * a * 255);
 };

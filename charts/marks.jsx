@@ -1,6 +1,6 @@
 // The built-in marks. They use only `defineMark` and `ctx`, the same seam a third-party mark has.
 import * as d3 from 'd3';
-import { defineMark, top } from './core.jsx';
+import { builtinMark, top } from './core.jsx';
 import { valueOf } from './scales.jsx';
 import { linearGradient, patternOf } from './paint.jsx';
 import { EFFECTS, RECT, LINE, styleOf } from './effects.jsx';
@@ -40,7 +40,7 @@ function gradientStroke(group, ctx) {
     stops: points.map(r => ({ offset: (ctx.x(r.x) - x1) / (x2 - x1), color: ctx.color(r.color) })) });
 }
 
-export const Line = defineMark('line', {
+export const Line = builtinMark('line', {
   color: 'stroke',
   render(rows, ctx) {
     const p = ctx.props, smooth = p.gradient && !ctx.coord;
@@ -83,7 +83,7 @@ function ribbons(rows, ctx) {
 
 // Vertical: `x` with `y1 y2`, or `y` alone, filled from 0. Horizontal: `y` with `x1 x2`.
 // A ribbon: `x1 x2 y1 y2` with `thickness1`/`thickness2`.
-export const Area = defineMark('area', {
+export const Area = builtinMark('area', {
   domain: (rows, props) => (props.thickness1 != null || props.thickness2 != null ? ribbonReach(rows, props)
     : !hasInterval(rows, 'x') && !hasInterval(rows, 'y') ? { y: [0] } : {}),
   render(rows, ctx) {
@@ -181,13 +181,13 @@ function roundedRect(x, y, w, h, radii) {
 const baselineHint = baseline => (rows, props, options) =>
   (props.baseline ?? baseline) == null ? {} : { [yIsBand(rows, options) ? 'x' : 'y']: [props.baseline ?? baseline] };
 
-export const Rect = defineMark('rect', {
+export const Rect = builtinMark('rect', {
   domain: baselineHint(undefined),
   render: (rows, ctx) => rects(rows, ctx, ctx.props.baseline),
 });
 
 // A Rect whose single point on its value axis runs from `baseline` (0).
-export const Bar = defineMark('bar', {
+export const Bar = builtinMark('bar', {
   domain: baselineHint(0),
   render: (rows, ctx) => rects(rows, ctx, ctx.props.baseline ?? 0, true),
 });
@@ -196,7 +196,7 @@ export const Bar = defineMark('bar', {
 // the same area, centred by a transform. `rx` and `ry` instead give the radii in data units (a
 // field, function or number), so a layout in unit space scales with the plot. The scene has
 // circles, not ellipses: `rx` is measured on the x scale and wins; `ry` alone on the y scale.
-export const Dot = defineMark('dot', {
+export const Dot = builtinMark('dot', {
   size: 'r',
   render: (rows, ctx) => rows.filter(r => top(r) != null).flatMap(r => {
     const p = ctx.point(r.x, top(r), r);
@@ -215,7 +215,7 @@ export const Dot = defineMark('dot', {
 // A segment from (x1, y1) to (x2, y2); a missing end takes the point channel. Under a coord it is
 // a path along the coord's own geometry (a great circle on a map). `curve="link-horizontal"`
 // draws d3's horizontal link (a tree's edge), any other `Line` curve name that curve, instead of a line.
-export const Link = defineMark('link', {
+export const Link = builtinMark('link', {
   color: 'stroke',
   render: (rows, ctx) => rows.flatMap(r => {
     if ([r.x1 ?? r.x, r.y1 ?? r.y, r.x2 ?? r.x, r.y2 ?? r.y].some(v => v == null || Number.isNaN(v))) return [];   // an end is missing
@@ -237,7 +237,7 @@ export const Link = defineMark('link', {
 
 // An arrow or tick at each point, turned `angle` degrees clockwise from up (a field or function),
 // `length` pixels long (a constant, the same at any figure size). Put `markerEnd={arrowhead()}` on it for a head.
-export const Vector = defineMark('vector', {
+export const Vector = builtinMark('vector', {
   color: 'stroke',
   render: (rows, ctx) => rows.flatMap(r => {
     const p = ctx.point(r.x, top(r), r), angle = ctx.field(r, 'angle'), length = ctx.field(r, 'length') ?? 10;
@@ -250,7 +250,7 @@ export const Vector = defineMark('vector', {
 
 // A wedge per row: pie, donut (`inner`, a fraction of the radius) or gauge (`startAngle`,
 // `endAngle`). `value` is read by the mark, not trained, so a pie needs no x or y scale.
-export const Arc = defineMark('arc', {
+export const Arc = builtinMark('arc', {
   render(rows, { area, field, resolve, props, coord }) {
     // Under a polar coord the centre, radius, hole and sweep are the coord's; the mark's own props win.
     const f = coord?.frame ?? {};
