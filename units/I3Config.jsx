@@ -5,8 +5,9 @@ import schemaFile from '../lib/schemaFile.jsx';
 // written in the layout that uses it, with the schema's components (`Set`,
 // `Bindsym`, `Mode`, ...), which `index.jsx` exports alongside this one.
 //
-// It never reloads i3. `path` defaults to i3's own config path, so pass another
-// one to write a file beside a config that something else still owns.
+// `path` defaults to i3's own config path, so pass another one to write a file
+// beside a config that something else still owns. It reloads i3 only if told
+// to: `apply={() => sh`i3-msg reload`}`.
 const I3Config = schemaFile(I3Root, '~/.config/i3/config');
 
 export default I3Config;

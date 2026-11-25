@@ -27,7 +27,8 @@ no props. They are legacy. Do not copy them for a new unit.
 ## Facts that are easy to get wrong
 
 - A tauler unit takes no props (tauler ADR 0040), but a plain component can
-  take props and call `ConfigFile()` during render. `schemaFile` does this.
+  take props, functions included (`apply`), and call `ConfigFile()` during
+  render. `schemaFile` does this.
   A new unit on every render is fine: tauler collects units from the rendered
   tree on every Sweep, and a file is written only when its content differs.
 - A layout can import only from `index.jsx`. Anything a layout needs must be

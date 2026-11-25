@@ -464,8 +464,8 @@ a `path` prop (default: `defaultPath`) and children, and writes the children,
 rendered through `Root`, to that path. `apply` and `mode` are
 [`ConfigFile`'s own options](https://github.com/kantord/tauler/blob/main/docs/content/docs/units.md):
 `apply(path, text)` runs after each write, for a program that has to be told to
-reload. They are set once here and are not props, because a function prop does
-not reach a unit's hooks.
+reload, and `mode` is the file's permissions. The component takes both as props
+too; the values given to `schemaFile` are the defaults.
 
 ## Recipes
 
@@ -567,7 +567,20 @@ different paths, to write more than one file. To try it beside a config that
 something else still owns, give it another path (`~/.config/i3/config.tauler`)
 and compare the two.
 
-It holds no directives of its own and never reloads i3. `I3Theme` writes
+It holds no directives of its own. To reload i3 after each write, pass
+`apply`:
+
+```jsx
+<I3Config path="~/.config/i3/config" apply={() => sh`i3-msg reload`}>
+```
+
+If i3 starts tauler (an `exec` line in the i3 config), do not let this file be
+the whole config: on a machine where tauler has never run, there would be no
+config to start it. Keep a short `~/.config/i3/config` of your own that starts
+tauler and has `include ~/.config/i3/tauler-config.conf`, and write that
+included file from here.
+
+`I3Theme` writes
 `~/.config/i3/tauler-theme.conf`; add `<Include value="~/.config/i3/tauler-theme.conf" />` if
 you want i3's chrome in the tauler theme.
 
