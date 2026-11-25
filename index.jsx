@@ -28,13 +28,34 @@ export { Treemap, Tree, Pack, Partition } from './charts/hierarchy.jsx';
 export { Geo, GeoDot } from './charts/geo.jsx';
 
 export { default as hueFor } from './lib/hueFor.jsx';
+export { default as schemaFile } from './lib/schemaFile.jsx';
 
 export { default as KittyConfig } from './units/KittyConfig.jsx';
 export { default as KittyTheme } from './units/KittyTheme.jsx';
 export { default as I3Theme } from './units/I3Theme.jsx';
+export { default as I3Config } from './units/I3Config.jsx';
 export { default as GtkTheme } from './units/GtkTheme.jsx';
 export { default as ColorScheme } from './units/ColorScheme.jsx';
 export { default as Gtk3Css } from './units/Gtk3Css.jsx';
 export { default as RofiConfig } from './units/RofiConfig.jsx';
 export { default as RofiTheme } from './units/RofiTheme.jsx';
 export { default as RecentFilesTheme } from './units/RecentFilesTheme.jsx';
+
+// The i3 schema's components: the children of `<I3Config>`. The schema's own
+// root is not exported, `I3Config` above wraps it. `Bar` is `I3Bar` here,
+// because the charts already export a `Bar`.
+export {
+  Comment, Blank, Set, SetFromResource, Include, Exec, Font, Bindsym, Bindcode, Mode,
+  FloatingModifier, TilingDrag, TilingDragSwapModifier, FloatingMinimumSize, FloatingMaximumSize,
+  DefaultOrientation, WorkspaceLayout, DefaultBorder, DefaultFloatingBorder, HideEdgeBorders,
+  TitleAlign, ShowMarks, ForWindow, AssignWorkspace, AssignWorkspaceNumber, AssignOutput, NoFocus,
+  FocusFollowsMouse, MouseWarping, FocusWrapping, ForceFocusWrapping, WorkspaceAutoBackAndForth,
+  ForceDisplayUrgencyHint, FocusOnWindowActivation, PopupDuringFullscreen, WorkspaceOutput,
+  WorkspaceGaps, ForceXinerama, DisableRandr15, FakeOutputs, Gaps, SmartGaps, SmartBorders,
+  ClientColor, ClientFocusedTabTitle, ClientBackground, IpcSocket, IpcKillTimeout, RestartState,
+  Bar as I3Bar, BarCommand, BarStatusCommand, BarWorkspaceCommand, BarSocketPath, BarMode,
+  BarHiddenState, BarId, BarModifier, BarBindsym, BarWheelUpCmd, BarWheelDownCmd, BarPosition,
+  BarOutput, BarTrayOutput, BarTrayPadding, BarSeparatorSymbol, BarBindingModeIndicator,
+  BarWorkspaceButtons, BarWorkspaceMinWidth, BarStripWorkspaceNumbers, BarStripWorkspaceName,
+  BarVerbose, BarHeight, BarPadding, BarColors, BarColor, BarWorkspaceColor,
+} from './schemas/i3-config.schema.yaml';

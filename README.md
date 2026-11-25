@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group, Layer, Scale, Axis, Grid, Legend, stack, dodge, jitter, jitterPx, geo, polar, defineMark, defineScale, defineGuide, colorScale, sizeScale, shapeScale, opacityScale, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath, chartTheme, bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, schemaFile, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group, Layer, Scale, Axis, Grid, Legend, stack, dodge, jitter, jitterPx, geo, polar, defineMark, defineScale, defineGuide, colorScale, sizeScale, shapeScale, opacityScale, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath, chartTheme, bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, I3Config, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -36,8 +36,8 @@ plus the two things it says have no kind at all:
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `hierarchy.jsx`, `geo.jsx`, `theme.jsx`, `stats.jsx`, and the stages and marks they use |
-| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
-| `lib/`     | —       | plain functions, no component | `hueFor.jsx` |
+| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `I3Config.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
+| `lib/`     | —       | plain functions, no component | `hueFor.jsx`, `schemaFile.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
 | `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline`, `tauler-agenda-gcalcli`, `tauler-enwiro-envs`, `tauler-open`, `tauler-claude-recaps` |
 
@@ -450,6 +450,23 @@ import { hueFor } from "@gh/kantord/dotfiles-tauler";
 A hash of the name, so the same name gets the same hue on every machine with
 nothing stored.
 
+### schemaFile
+
+Turns a schema's root component into a component that writes a config file.
+`I3Config` below is made with it:
+
+```jsx
+const I3Config = schemaFile(I3Root, "~/.config/i3/config");
+```
+
+`schemaFile(Root, defaultPath, { apply, mode })` returns a component that takes
+a `path` prop (default: `defaultPath`) and children, and writes the children,
+rendered through `Root`, to that path. `apply` and `mode` are
+[`ConfigFile`'s own options](https://github.com/kantord/tauler/blob/main/docs/content/docs/units.md):
+`apply(path, text)` runs after each write, for a program that has to be told to
+reload. They are set once here and are not props, because a function prop does
+not reach a unit's hooks.
+
 ## Recipes
 
 There is no `VolumeSlider`, no `VolumeKnob`, no `WeatherCard`. A Data
@@ -494,6 +511,14 @@ package.
 
 ## Units
 
+What belongs in this package is the generic part of a config file: its schema,
+and a component that writes a file from children. The values (your keybinds,
+your font, your monitor names) belong in your own layout, as the children of
+that component. `I3Config` is the model for that.
+
+`KittyConfig` and `RofiConfig` do not follow it yet: they hold a fixed set of
+values and take no props. Treat them as legacy, not as the pattern to copy.
+
 ### KittyConfig
 
 Writes `~/.config/kitty/tauler-kitty-settings.conf` — a fixed set of kitty
@@ -516,6 +541,37 @@ window at all, so that line belongs in your own `kitty.conf`, after the
 `include` (a later value wins).
 
 Requires kitty.
+
+### I3Config
+
+Writes an i3 config file from its children. The children are the
+[i3 schema's components](#i3-config-schemayaml), which this package exports
+too, so the layout needs no schema file of its own:
+
+```jsx
+import { I3Config, Set, Bindsym, Mode, ForWindow } from "@gh/kantord/dotfiles-tauler";
+
+<I3Config path="~/.config/i3/config">
+  <Set name="$mod" value="Mod4" />
+  <Bindsym keys="$mod+Return" command="exec kitty" />
+  <Mode name="resize">
+    <Bindsym keys="h" command="resize shrink width 10 px or 10 ppt" />
+    <Bindsym keys="Escape" command='mode "default"' />
+  </Mode>
+  <ForWindow criteria='class="^i3scratchpad$"' command="move scratchpad, sticky enable" />
+</I3Config>
+```
+
+`path` defaults to `~/.config/i3/config`. Render it more than once, with
+different paths, to write more than one file. To try it beside a config that
+something else still owns, give it another path (`~/.config/i3/config.tauler`)
+and compare the two.
+
+It holds no directives of its own and never reloads i3. `I3Theme` writes
+`~/.config/i3/tauler-theme.conf`; add `<Include value="~/.config/i3/tauler-theme.conf" />` if
+you want i3's chrome in the tauler theme.
+
+Requires i3.
 
 ### KittyTheme, I3Theme, GtkTheme, ColorScheme, Gtk3Css
 
@@ -575,12 +631,15 @@ Requires rofi.
 
 ## Schemas
 
-Schema files (`schemas/*.schema.yaml`) are importable straight from a
-layout on tauler builds with `tauler-configgen`: each one declares JSX
-components for one config format plus the template that renders them. The
-kitty and rofi schemas above back the Units above; the i3 schema below
-ships on its own, without a deployed component, because an i3 config is too
-personal to be shipped as one.
+Schema files (`schemas/*.schema.yaml`) each declare JSX components for one
+config format plus the template that renders them (tauler's
+`tauler-configgen`). A layout can only import from the package's `index.jsx`,
+not from a schema's own path, so a schema is used through what `index.jsx`
+exports for it:
+
+- the i3 schema: `I3Config` and every one of its components (below);
+- the kitty, rofi and GTK schemas: only the Units above, for now. Their
+  components are not exported yet.
 
 ### i3-config.schema.yaml
 
@@ -598,23 +657,22 @@ class (`ClientColor`, `BarColor`) take `class`. `exec_always` is
 written bare everywhere (`outputs={["Dell UP2414Q"]}`); the template adds
 the quotes i3 needs.
 
-Copy `schemas/i3-config.schema.yaml` next to your layout (git-package
-imports resolve to `index.jsx` only, and a schema has to be imported by
-its own path):
+Every component is exported from the package under its own name, with one
+exception: `Bar` is exported as `I3Bar`, because the charts already export a
+`Bar`. The schema's root is not exported; `I3Config` wraps it.
 
 ```jsx
 import {
   I3Config, Set, Font, Exec, Bindsym, Mode, FloatingModifier, ForWindow,
-  ClientColor, Bar, BarStatusCommand, BarColors, BarWorkspaceColor,
-} from "./i3-config.schema.yaml";
+  ClientColor, I3Bar, BarStatusCommand, BarColors, BarWorkspaceColor,
+} from "@gh/kantord/dotfiles-tauler";
 
 const mod = "$mod";
 const workspaces = ["1", "2", "3"];
 
-const I3 = ConfigFile({
-  path: "~/.config/i3/config",
-  render: () => (
-    <I3Config>
+export default function I3() {
+  return (
+    <I3Config path="~/.config/i3/config">
       <Set name={mod} value="Mod4" />
       <Font value="pango:DejaVu Sans Mono 8" />
       <Exec noStartupId command="dex --autostart --environment i3" />
@@ -631,15 +689,15 @@ const I3 = ConfigFile({
       </Mode>
       <ForWindow criteria='class="^i3scratchpad$"' command="move scratchpad, sticky enable" />
       <ClientColor class="focused" border="#F6A100" background="#F6A100" text="#000000" indicator="#2e9ef4" childBorder="#F6A100" />
-      <Bar>
+      <I3Bar>
         <BarStatusCommand value="i3status" />
         <BarColors>
           <BarWorkspaceColor class="focused_workspace" border="#F6A100" background="#F6A100" text="#000000" />
         </BarColors>
-      </Bar>
+      </I3Bar>
     </I3Config>
-  ),
-});
+  );
+}
 ```
 
 Every scalar prop is a string (write `size="5"`, not `size={5}`) validated
@@ -658,7 +716,7 @@ the only thing standing between a prop value and i3's parser, so there are
 no optional free-text props (a `ClientColor` takes all five colors, for
 instance). Children are in file order, which i3 cares about, and a `.map()`
 or a `{cond && <X />}` works anywhere a child does. A node placed in a
-block that does not take it (a `Bindsym` inside `Bar`, a `BarMode` at top
+block that does not take it (a `Bindsym` inside `I3Bar`, a `BarMode` at top
 level) renders a `tauler_schema_error` line, which is not an i3 directive,
 so `i3 -C` reports it instead of dropping or reinterpreting it.
 
