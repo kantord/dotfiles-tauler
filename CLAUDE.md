@@ -21,8 +21,10 @@ never imports a schema by path and never copies a schema file.
 </I3Config>
 ```
 
-`units/KittyConfig.jsx` and `units/RofiConfig.jsx` hold fixed values and take
-no props. They are legacy. Do not copy them for a new unit.
+`KittyConfig`, `RofiConfig` and `RofiTheme` are made the same way. The units
+that take no props and no children (`KittyTheme`, `I3Theme`, `GtkTheme`,
+`ColorScheme`, `Gtk3Css`) hold only the mapping from tauler's theme tokens to
+another program's colours. That mapping is generic, so it belongs here.
 
 ## Facts that are easy to get wrong
 
@@ -34,7 +36,8 @@ no props. They are legacy. Do not copy them for a new unit.
 - A layout can import only from `index.jsx`. Anything a layout needs must be
   exported there. `index.jsx` can re-export from a `.schema.yaml` file.
 - `index.jsx` is one flat namespace. Check for a name clash before exporting
-  a schema's components (the i3 `Bar` is exported as `I3Bar`).
+  a schema's components (the i3 `Bar` is exported as `I3Bar`, the rofi theme's
+  `Font` as `RofiFont`).
 
 ## Checks
 

@@ -13,7 +13,7 @@ On a tauler build that supports git-based Packages (`@gh/owner/repo` imports —
 see [tauler issue #554](https://github.com/kantord/tauler/issues/554)):
 
 ```jsx
-import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, schemaFile, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group, Layer, Scale, Axis, Grid, Legend, stack, dodge, jitter, jitterPx, geo, polar, defineMark, defineScale, defineGuide, colorScale, sizeScale, shapeScale, opacityScale, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath, chartTheme, bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, I3Config, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme, RecentFilesTheme } from "@gh/kantord/dotfiles-tauler";
+import { OutputVolume, Weather, Clock, Battery, Notifications, ClaudeUsage, Agenda, EnwiroEnvs, GitHubSearch, OpenUrl, ClaudeRecaps, hueFor, schemaFile, SidebarSection, WeatherSummary, Plot, Line, Area, Rect, Bar, Dot, Link, Vector, Text, Arc, Polygon, RuleX, RuleY, TickX, TickY, Swarm, Image, Group, Layer, Scale, Axis, Grid, Legend, stack, dodge, jitter, jitterPx, geo, polar, defineMark, defineScale, defineGuide, colorScale, sizeScale, shapeScale, opacityScale, linearGradient, radialGradient, pattern, hatch, blur, dropShadow, marker, arrowhead, mask, clipRect, clipPath, chartTheme, bin, bin2d, group, rolling, cumsum, normalize, last, fold, groupBy, rank, kde, ecdf, boxStats, treemap, tree, pack, partition, flow, hexbin, delaunay, contours, densityContours, regress, difference, waterfall, orderBy, dateRange, Treemap, Tree, Pack, Partition, Geo, GeoDot, KittyConfig, KittyTheme, I3Theme, I3Config, GtkTheme, ColorScheme, Gtk3Css, RofiConfig, RofiTheme } from "@gh/kantord/dotfiles-tauler";
 ```
 
 tauler clones this repo, pins it to a commit in a `tauler-pkg.lock` file next
@@ -36,7 +36,7 @@ plus the two things it says have no kind at all:
 | `data/`    | Data    | nothing — calls a child with data | `Volume.jsx`, `Weather.jsx`, `Clock.jsx`, `Battery.jsx`, `Notifications.jsx`, `ClaudeUsage.jsx`, `Agenda.jsx`, `EnwiroEnvs.jsx`, `GitHubSearch.jsx`, `OpenUrl.jsx`, `ClaudeRecaps.jsx` |
 | `display/` | Display | props, as pixels     | `SidebarSection.jsx`, `WeatherSummary.jsx`        |
 | `charts/`  | Display | marks and a spec, as pixels | `Plot.jsx`, `core.jsx`, `marks.jsx`, `hierarchy.jsx`, `geo.jsx`, `theme.jsx`, `stats.jsx`, and the stages and marks they use |
-| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `I3Config.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx`, `RecentFilesTheme.jsx` |
+| `units/`   | —       | nothing — declares a file that should exist | `KittyConfig.jsx`, `KittyTheme.jsx`, `I3Theme.jsx`, `I3Config.jsx`, `GtkTheme.jsx`, `ColorScheme.jsx`, `Gtk3Css.jsx`, `RofiConfig.jsx`, `RofiTheme.jsx` |
 | `lib/`     | —       | plain functions, no component | `hueFor.jsx`, `schemaFile.jsx` |
 | `schemas/` | —       | nothing — a config-format template | `*.schema.yaml`                           |
 | `bin/`     | —       | module scripts behind `data/`      | `tauler-volume`, `tauler-claude-usage`, `tauler-claude-statusline`, `tauler-agenda-gcalcli`, `tauler-enwiro-envs`, `tauler-open`, `tauler-claude-recaps` |
@@ -514,31 +514,37 @@ package.
 What belongs in this package is the generic part of a config file: its schema,
 and a component that writes a file from children. The values (your keybinds,
 your font, your monitor names) belong in your own layout, as the children of
-that component. `I3Config` is the model for that.
+that component. `I3Config`, `KittyConfig`, `RofiConfig` and `RofiTheme` all work
+this way; each is one line of [`schemaFile`](#schemafile) over its schema.
 
-`KittyConfig` and `RofiConfig` do not follow it yet: they hold a fixed set of
-values and take no props. Treat them as legacy, not as the pattern to copy.
+The other Units (`KittyTheme`, `I3Theme`, `GtkTheme`, `ColorScheme`, `Gtk3Css`)
+take no props and no children: all they hold is the mapping from tauler's
+theme tokens to another program's colours, which is the same for everyone.
 
 ### KittyConfig
 
-Writes `~/.config/kitty/tauler-kitty-settings.conf` — a fixed set of kitty
-settings (font, scrollback, remote control, and so on). Takes no props; this
-is an opinionated starting point, not a configurable component. Fork the file
-and change the values directly if you want different settings.
+Writes a kitty settings file from its children, the
+[kitty schema's](#kitty-configschemayaml-rofi-configschemayaml-rofi-full-themeschemayaml)
+components:
 
 ```jsx
-<KittyConfig />
+import { KittyConfig, FontFamily, FontSize, ScrollbackLines } from "@gh/kantord/dotfiles-tauler";
+
+<KittyConfig>
+  <FontFamily value="JetBrains Mono" />
+  <FontSize value="14" />
+  <ScrollbackLines value="10000" />
+</KittyConfig>
 ```
 
-Deliberately writes a *fragment*, not the whole of `kitty.conf`: your own
-`kitty.conf` should `include ~/.config/kitty/tauler-kitty-settings.conf`
-rather than being replaced by it, so anything else that also manages part of
-your kitty config (most commonly `kitten themes`, which rewrites the color
-block on every theme switch) is never fought over.
+`path` defaults to `~/.config/kitty/tauler-kitty-settings.conf`, which is a
+*fragment*, not `kitty.conf`: your own `kitty.conf` should
+`include ~/.config/kitty/tauler-kitty-settings.conf`, so anything else that
+also manages part of your kitty config (most commonly `kitten themes`, which
+rewrites the colour block on every theme switch) is never fought over.
 
-It sets no `shell`: a missing shell program stops kitty from opening a
-window at all, so that line belongs in your own `kitty.conf`, after the
-`include` (a later value wins).
+Leave `shell` in your own `kitty.conf`, after the `include`: a missing shell
+program stops kitty from opening a window at all.
 
 Requires kitty.
 
@@ -613,34 +619,45 @@ the accent, `card` for content, `sidebar` for header bars, `popover` for dialogs
 
 ### RofiConfig
 
-Writes `~/.config/rofi/config.rasi` — rofi's *behavior* (modes, matching,
-terminal, display formats), not its colors or layout. Takes no props, same
-"fork it to change the values" deal as `KittyConfig`.
+Writes rofi's `configuration { }` file from its children: rofi's *behaviour*
+(modes, matching, terminal, display formats), not its colours or layout.
 
 ```jsx
-<RofiConfig />
+import { RofiConfig, Modes, Matching, Terminal } from "@gh/kantord/dotfiles-tauler";
+
+<RofiConfig>
+  <Modes value="combi,drun,run,window" />
+  <Matching value="fuzzy" />
+  <Terminal value="kitty" />
+</RofiConfig>
 ```
 
-Requires rofi.
+`path` defaults to `~/.config/rofi/config.rasi`. Requires rofi.
 
-### RofiTheme / RecentFilesTheme
+### RofiTheme
 
-Two rofi *appearance* files — `RofiTheme` writes
-`~/.config/rofi/tauler-theme.rasi` (the main launcher theme), `RecentFilesTheme`
-writes `~/.config/rofi/recent-files.rasi` (a fullscreen grid theme, e.g. for a
-recent-files picker). Both take no props.
+Writes a rofi theme (`.rasi`) from its children: selectors and their
+properties. Read `ctx.theme.colors` in your layout to make it follow the
+active tauler theme; rofi picks the file up on its next launch.
 
 ```jsx
-<RofiTheme />
-<RecentFilesTheme />
+import { RofiTheme, Selector, RofiFont, BackgroundColor, TextColor } from "@gh/kantord/dotfiles-tauler";
+
+const c = ctx.theme.colors;
+
+<RofiTheme>
+  <Selector name="*">
+    <RofiFont value="JetBrains Mono 28" />
+    <TextColor value={c["popover-foreground"]} />
+  </Selector>
+  <Selector name="window">
+    <BackgroundColor value={c.popover} />
+  </Selector>
+</RofiTheme>
 ```
 
-Both render from `ctx.theme`, like `KittyTheme` and `I3Theme`: the window is
-`popover`, the input bar and rows sit on `background`, the selection and accent
-are `primary`, errors are `destructive`. Changing the layout's theme rewrites
-both files; rofi picks them up on its next launch.
-
-Requires rofi.
+`path` defaults to `~/.config/rofi/tauler-theme.rasi`; render it again with
+another path for a second theme. Requires rofi.
 
 ## Schemas
 
@@ -651,8 +668,22 @@ not from a schema's own path, so a schema is used through what `index.jsx`
 exports for it:
 
 - the i3 schema: `I3Config` and every one of its components (below);
-- the kitty, rofi and GTK schemas: only the Units above, for now. Their
-  components are not exported yet.
+- the kitty schema: `KittyConfig` and every one of its components;
+- the rofi-config schema: `RofiConfig` and every one of its components;
+- the rofi-full-theme schema: `RofiTheme` and every one of its components;
+- the GTK schema: only `GtkTheme`. Its components are not exported.
+
+`index.jsx` is one flat namespace, so a component whose name is already taken
+is exported with a prefix: the i3 `Bar` is `I3Bar`, the rofi theme's `Font`
+is `RofiFont`. No schema's root is exported; the wrapper stands in for it.
+
+### kitty-config.schema.yaml, rofi-config.schema.yaml, rofi-full-theme.schema.yaml
+
+One component per setting, named after it in CamelCase (`font_size` is
+`FontSize`, `drun-display-format` is `DrunDisplayFormat`), each taking
+`value`. In the rofi theme, a `Selector` (`name="window"`) holds the
+properties of one `.rasi` block. The schema files list every component and
+the values each accepts.
 
 ### i3-config.schema.yaml
 

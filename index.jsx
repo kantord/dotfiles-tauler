@@ -39,7 +39,6 @@ export { default as ColorScheme } from './units/ColorScheme.jsx';
 export { default as Gtk3Css } from './units/Gtk3Css.jsx';
 export { default as RofiConfig } from './units/RofiConfig.jsx';
 export { default as RofiTheme } from './units/RofiTheme.jsx';
-export { default as RecentFilesTheme } from './units/RecentFilesTheme.jsx';
 
 // The i3 schema's components: the children of `<I3Config>`. The schema's own
 // root is not exported, `I3Config` above wraps it. `Bar` is `I3Bar` here,
@@ -59,3 +58,30 @@ export {
   BarWorkspaceButtons, BarWorkspaceMinWidth, BarStripWorkspaceNumbers, BarStripWorkspaceName,
   BarVerbose, BarHeight, BarPadding, BarColors, BarColor, BarWorkspaceColor,
 } from './schemas/i3-config.schema.yaml';
+
+// The kitty schema's components: the children of `<KittyConfig>`.
+export {
+  FontFamily, BoldFont, ItalicFont, BoldItalicFont, AdjustLineHeight, FontSize, AutoReloadConfig,
+  ProgressBar, ScrollbackLines, EnableAudioBell, ShellIntegration, Shell, RememberWindowSize,
+  InitialWindowWidth, InitialWindowHeight, InactiveTextAlpha, RepaintDelay, InputDelay,
+  AllowRemoteControl, Foreground, Background, SelectionForeground, SelectionBackground,
+  CursorColor, CursorTextColor, UrlColor, ActiveBorderColor, InactiveBorderColor,
+  ActiveTabForeground, ActiveTabBackground, InactiveTabForeground, InactiveTabBackground,
+  TabBarBackground, Color0, Color1, Color2, Color3, Color4, Color5, Color6, Color7, Color8, Color9,
+  Color10, Color11, Color12, Color13, Color14, Color15,
+} from './schemas/kitty-config.schema.yaml';
+
+// The rofi-config schema's components: the children of `<RofiConfig>`.
+export {
+  Modes, CombiModes, Matching, Sort, ShowIcons, Terminal, WindowFormat, DrunDisplayFormat,
+  DrunShowActions, DrunMatchFields, DrunExcludeCategories, DisplayDrun, DisplayRun, DisplayWindow,
+  DisplayCombi, ClickToExit,
+} from './schemas/rofi-config.schema.yaml';
+
+// The rofi-full-theme schema's components: the children of `<RofiTheme>`. `Font` is
+// `RofiFont` here, because the i3 schema already exports a `Font`.
+export {
+  Selector, BackgroundColor, TextColor, BorderColor, PlaceholderColor, Font as RofiFont, Location,
+  Anchor, YOffset, Width, Height, Spacing, Size, VerticalAlign, Padding, Border, Cycle, Dynamic,
+  Scrollbar, Lines, Columns, Placeholder, Children,
+} from './schemas/rofi-full-theme.schema.yaml';
